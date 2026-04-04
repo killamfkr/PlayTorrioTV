@@ -166,7 +166,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       Expanded(
                         child: DpadFocusable(
                           autofocus: false,
-                          onTap: () => Navigator.of(context).pop(),
+                          onSelect: () => Navigator.of(context).pop(),
                           builder: (context, focused, _) => AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -186,7 +186,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                         flex: 2,
                         child: DpadFocusable(
                           autofocus: true,
-                          onTap: widget.info.apkUrl != null ? _install : null,
+                          onSelect: widget.info.apkUrl != null ? _install : null,
                           builder: (context, focused, _) => AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
                             padding: const EdgeInsets.symmetric(vertical: 14),
