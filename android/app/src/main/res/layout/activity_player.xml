@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- VLC Video Surface -->
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/videoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Buffering — tiny centered spinner, NO background darkening -->
+    <ProgressBar
+        android:id="@+id/bufferingOverlay"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="#BBFFFFFF"
+        android:visibility="gone"
+        android:elevation="6dp" />
+
+    <!-- Controls Overlay — NO full-screen scrim -->
+    <FrameLayout
+        android:id="@+id/controlsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:elevation="8dp">
+
+        <!-- Whisper-thin top gradient for text legibility only -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:layout_gravity="top"
+            android:background="@drawable/gradient_top" />
+
+        <!-- Whisper-thin bottom gradient -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/gradient_bottom" />
+
+        <!-- ─── Top bar ─── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
+            android:paddingTop="18dp">
+
+            <ImageButton
+                android:id="@+id/backButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_arrow_back_24dp"
+                android:contentDescription="Back"
+                android:tint="#DDFFFFFF"
+                android:scaleType="centerInside"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/titleText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:text=""
+                android:textColor="#EEFFFFFF"
+                android:textSize="15sp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.01"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:shadowColor="#55000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="3" />
+
+        </LinearLayout>
+
+        <!-- ─── Bottom controls ─── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
+            android:paddingBottom="20dp">
+
+            <!-- Seekbar row — time | seekbar | duration (inline) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/currentTimeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:minWidth="40dp" />
+
+                <SeekBar
+                    android:id="@+id/seekBar"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:progressTint="#FFFFFF"
+                    android:thumbTint="#FFFFFF"
+                    android:progressBackgroundTint="#33FFFFFF"
+                    android:max="1000"
+                    android:paddingStart="2dp"
+                    android:paddingEnd="2dp"
+                    android:focusable="true" />
+
+                <TextView
+                    android:id="@+id/totalTimeText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:textColor="#77FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:minWidth="40dp"
+                    android:gravity="end" />
+
+            </LinearLayout>
+
+            <!-- Action buttons — play left, utility icons right -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <!-- Play/Pause — primary action -->
+                <ImageButton
+                    android:id="@+id/playPauseButton"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@android:color/transparent"
+                    android:src="@drawable/ic_pause_48dp"
+                    android:contentDescription="Play/Pause"
+                    android:tint="#FFFFFF"
+                    android:scaleType="centerInside"
+                    android:focusable="true" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <!-- Utility buttons — subtle secondary -->
+                <ImageButton
+                    android:id="@+id/subtitlesButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="2dp"
+                    android:background="@android:color/transparent"
+                    android:src="@drawable/ic_subtitles_24dp"
+                    android:contentDescription="Subtitles"
+                    android:tint="#99FFFFFF"
+                    android:scaleType="centerInside"
+                    android:focusable="true" />
+
+                <ImageButton
+                    android:id="@+id/audioTrackButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="2dp"
+                    android:background="@android:color/transparent"
+                    android:src="@drawable/ic_graphic_eq_24dp"
+                    android:contentDescription="Audio Track"
+                    android:tint="#99FFFFFF"
+                    android:scaleType="centerInside"
+                    android:focusable="true" />
+
+                <ImageButton
+                    android:id="@+id/aspectRatioButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="2dp"
+                    android:background="@android:color/transparent"
+                    android:src="@android:drawable/ic_menu_crop"
+                    android:contentDescription="Aspect Ratio"
+                    android:tint="#99FFFFFF"
+                    android:scaleType="centerInside"
+                    android:focusable="true" />
+
+                <ImageButton
+                    android:id="@+id/subtitleSettingsButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:layout_marginEnd="2dp"
+                    android:background="@android:color/transparent"
+                    android:src="@drawable/ic_settings_24dp"
+                    android:contentDescription="Subtitle Settings"
+                    android:tint="#99FFFFFF"
+                    android:scaleType="centerInside"
+                    android:focusable="true" />
+
+                <ImageButton
+                    android:id="@+id/sourceButton"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@android:color/transparent"
+                    android:src="@drawable/ic_source_list_24dp"
+                    android:contentDescription="Sources"
+                    android:tint="#99FFFFFF"
+                    android:scaleType="centerInside"
+                    android:focusable="true"
+                    android:visibility="gone" />
+
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Side Panels -->
+    <com.playtorrio.playtorrio_tv.SubtitlePanel
+        android:id="@+id/subtitlePanel"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:elevation="12dp" />
+
+    <com.playtorrio.playtorrio_tv.AudioPanel
+        android:id="@+id/audioPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:elevation="12dp" />
+
+    <com.playtorrio.playtorrio_tv.SettingsPanel
+        android:id="@+id/settingsPanel"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:elevation="12dp" />
+
+    <com.playtorrio.playtorrio_tv.SourcePanel
+        android:id="@+id/sourcePanel"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:elevation="12dp" />
+
+    <!-- Streaming loading overlay -->
+    <FrameLayout
+        android:id="@+id/streamingLoadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#F0000000"
+        android:visibility="gone"
+        android:elevation="20dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/streamingTitleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="#EEFFFFFF"
+                android:textSize="18sp"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center" />
+
+            <ProgressBar
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_marginTop="20dp"
+                android:indeterminateTint="#AAFFFFFF" />
+
+            <TextView
+                android:id="@+id/streamingStatusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Finding sources..."
+                android:textColor="#77FFFFFF"
+                android:textSize="13sp"
+                android:fontFamily="sans-serif"
+                android:gravity="center" />
+
+        </LinearLayout>
+    </FrameLayout>
+
+</FrameLayout>
