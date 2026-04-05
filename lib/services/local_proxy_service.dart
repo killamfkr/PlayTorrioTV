@@ -400,7 +400,9 @@ class LocalProxyService {
     int pos = 0;
 
     // Find first sync byte
-    while (pos < len && ts[pos] != 0x47) pos++;
+    while (pos < len && ts[pos] != 0x47) {
+      pos++;
+    }
 
     while (pos + 188 <= len) {
       if (ts[pos] != 0x47) {

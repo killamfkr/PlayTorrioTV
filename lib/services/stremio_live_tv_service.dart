@@ -27,7 +27,7 @@ class StremioLiveTvService {
   static final StremioLiveTvService instance = StremioLiveTvService._();
 
   final Map<String, Map<String, List<EpgProgramme>>> _epgCache = {};
-  final Map<String, Map<String, dynamic>> _metaCache = {};
+  final Map<String, Map<String, dynamic>?> _metaCache = {};
 
   void clearCache() {
     _epgCache.clear();
