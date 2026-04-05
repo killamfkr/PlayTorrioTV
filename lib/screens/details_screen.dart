@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -143,7 +145,9 @@ class _DetailsScreenState extends State<DetailsScreen> {
   String? _cachedUnifiedFilter;
   int _cachedUnifiedHash = 0;
 
-  bool _movieStremioAutoPickDone = false;
+  bool _movieAutoPlayDone = false;
+  bool _tvFirstEpisodeAutoPlayDone = false;
+  bool _customTvFirstEpisodeAutoPlayDone = false;
 
   @override
   void initState() {
@@ -259,11 +263,51 @@ class _DetailsScreenState extends State<DetailsScreen> {
       final data = await TmdbService.getTvSeason(widget.id, seasonNumber);
       if (mounted) {
         setState(() => _seasonData = data);
+        _tryAutoPlayFirstTvEpisode(data);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _focusKey(_firstRightItemKey);
         });
       }
     } catch (_) {}
+  }
+
+  /// When opening a TMDB TV show, auto-start the first episode of the loaded season once.
+  void _tryAutoPlayFirstTvEpisode(Map<String, dynamic> seasonData) {
+    if (!_autoPlaySourcesActive ||
+        widget.mediaType != 'tv' ||
+        _isCustomStremioId ||
+        _tvFirstEpisodeAutoPlayDone) {
+      return;
+    }
+    final eps = seasonData['episodes'] as List?;
+    if (eps == null || eps.isEmpty) {
+      return;
+    }
+    final first = eps.first as Map<String, dynamic>;
+    final epNum = first['episode_number'] as int?;
+    if (epNum == null) {
+      return;
+    }
+    _tvFirstEpisodeAutoPlayDone = true;
+    unawaited(_showEpisodeSources(first));
+  }
+
+  /// Custom Stremio TV: auto-start first episode of the current season once.
+  void _tryAutoPlayFirstCustomTvEpisode() {
+    if (!_autoPlaySourcesActive ||
+        !_isCustomStremioId ||
+        widget.mediaType != 'tv' ||
+        _customTvFirstEpisodeAutoPlayDone ||
+        _customSeasonData == null) {
+      return;
+    }
+    final map = _customSeasonData!['episodesBySeason'] as Map<int, List<Map<String, dynamic>>>?;
+    final list = map?[_selectedSeason];
+    if (list == null || list.isEmpty) {
+      return;
+    }
+    _customTvFirstEpisodeAutoPlayDone = true;
+    unawaited(_showCustomEpisodeSources(list.first));
   }
 
   Future<void> _loadSources() async {
@@ -276,7 +320,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
           _sources = sources;
           _isLoadingSources = false;
         });
-        _tryAutoPickMovieStremio();
+        _tryAutoPlayMovie();
       }
     } catch (_) {
       if (mounted) setState(() => _isLoadingSources = false);
@@ -286,7 +330,13 @@ class _DetailsScreenState extends State<DetailsScreen> {
   Future<void> _loadAddonStreams() async {
     final imdbId = _imdbId;
     if (imdbId == null || imdbId.isEmpty) return;
-    if (SettingsService.instance.stremioAddons.isEmpty) return;
+    if (SettingsService.instance.stremioAddons.isEmpty) {
+      if (mounted && widget.mediaType == 'movie') {
+        setState(() => _isLoadingAddons = false);
+        _tryAutoPlayMovie();
+      }
+      return;
+    }
     setState(() => _isLoadingAddons = true);
     try {
       final results = await StremioAddonService.fetchAllMovieStreams(imdbId);
@@ -295,37 +345,44 @@ class _DetailsScreenState extends State<DetailsScreen> {
           _addonStreams = results;
           _isLoadingAddons = false;
         });
-        _tryAutoPickMovieStremio();
+        _tryAutoPlayMovie();
       }
     } catch (_) {
       if (mounted) setState(() => _isLoadingAddons = false);
     }
   }
 
-  bool get _stremioAutoPickActive =>
+  /// Auto-play when enabled: first PlayTorrio source, else first Stremio stream (addon order).
+  bool get _autoPlaySourcesActive =>
       SettingsService.instance.stremioAutoPickStreams &&
-      SettingsService.instance.stremioAddons.isNotEmpty &&
       !SettingsService.instance.streamingMode;
 
-  /// TMDB movie: if no PlayTorrio torrents, auto-play best Stremio addon stream.
-  void _tryAutoPickMovieStremio() {
-    if (!_stremioAutoPickActive || widget.mediaType != 'movie' || _isCustomStremioId) {
+  /// TMDB movie: auto-play first PlayTorrio hit, else first Stremio link.
+  void _tryAutoPlayMovie() {
+    if (!_autoPlaySourcesActive || widget.mediaType != 'movie' || _isCustomStremioId) {
       return;
     }
-    if (_movieStremioAutoPickDone) {
+    if (_movieAutoPlayDone) {
       return;
     }
     if (_isLoadingSources || _isLoadingAddons) {
       return;
     }
     if (_sources.isNotEmpty) {
+      _movieAutoPlayDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _playSource(_sources.first);
+      });
       return;
     }
     final pick = _pickAutoStremioStream(_addonStreams);
     if (pick == null) {
       return;
     }
-    _movieStremioAutoPickDone = true;
+    _movieAutoPlayDone = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -334,12 +391,12 @@ class _DetailsScreenState extends State<DetailsScreen> {
     });
   }
 
-  /// Custom Stremio movie id: same as [_tryAutoPickMovieStremio] using raw stream list.
+  /// Custom Stremio movie: first stream from addon JSON order.
   void _tryAutoPickCustomMovieStremio() {
-    if (!_stremioAutoPickActive || widget.mediaType != 'movie' || !_isCustomStremioId) {
+    if (!_autoPlaySourcesActive || widget.mediaType != 'movie' || !_isCustomStremioId) {
       return;
     }
-    if (_movieStremioAutoPickDone) {
+    if (_movieAutoPlayDone) {
       return;
     }
     if (_isLoadingAddons || _customStremioStreams.isEmpty) {
@@ -349,7 +406,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
     if (pick == null) {
       return;
     }
-    _movieStremioAutoPickDone = true;
+    _movieAutoPlayDone = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -437,6 +494,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
               }
               _isLoadingAddons = false;
             });
+            _tryAutoPlayFirstCustomTvEpisode();
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _focusKey(_firstRightItemKey);
             });
@@ -627,25 +685,30 @@ class _DetailsScreenState extends State<DetailsScreen> {
     }
 
     final imdb = _imdbId ?? '';
-    if (_stremioAutoPickActive && imdb.isNotEmpty) {
+    if (_autoPlaySourcesActive && imdb.isNotEmpty) {
       final torrents = await SourceService.searchTvSources(_title, _selectedSeason, epNum);
       if (!mounted) {
         return;
       }
-      if (torrents.isEmpty) {
-        final addonMap =
-            await StremioAddonService.fetchAllEpisodeStreams(imdb, _selectedSeason, epNum);
-        if (!mounted) {
-          return;
-        }
-        final pick = _pickAutoStremioStream(addonMap);
-        if (pick != null) {
-          _playStremioStream(
-            pick,
-            episode: EpisodeTarget(season: _selectedSeason, episode: epNum),
-          );
-          return;
-        }
+      if (torrents.isNotEmpty) {
+        _playSource(
+          torrents.first,
+          episode: EpisodeTarget(season: _selectedSeason, episode: epNum),
+        );
+        return;
+      }
+      final addonMap =
+          await StremioAddonService.fetchAllEpisodeStreams(imdb, _selectedSeason, epNum);
+      if (!mounted) {
+        return;
+      }
+      final pick = _pickAutoStremioStream(addonMap);
+      if (pick != null) {
+        _playStremioStream(
+          pick,
+          episode: EpisodeTarget(season: _selectedSeason, episode: epNum),
+        );
+        return;
       }
     }
 
@@ -1129,7 +1192,20 @@ class _DetailsScreenState extends State<DetailsScreen> {
     final addonBaseUrl = item?['_addonBaseUrl']?.toString() ?? '';
     final type = item?['type']?.toString() ?? 'series';
 
-    if (_stremioAutoPickActive && addonBaseUrl.isNotEmpty) {
+    if (_autoPlaySourcesActive && addonBaseUrl.isNotEmpty) {
+      final season = ep['season'] as int? ?? 1;
+      final epNum = ep['episode'] as int? ?? 1;
+      final torrents = await SourceService.searchTvSources(_title, season, epNum);
+      if (!mounted) {
+        return;
+      }
+      if (torrents.isNotEmpty) {
+        _playSource(
+          torrents.first,
+          episode: EpisodeTarget(season: season, episode: epNum),
+        );
+        return;
+      }
       final streams = await StremioAddonService.getStreams(
         baseUrl: addonBaseUrl,
         type: type,
@@ -1140,8 +1216,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
       }
       final best = StremioAddonService.firstRawStreamMap(streams);
       if (best != null) {
-        final season = ep['season'] as int? ?? 1;
-        final epNum = ep['episode'] as int? ?? 1;
         _playCustomStream(
           best,
           episode: EpisodeTarget(season: season, episode: epNum),
@@ -2142,7 +2216,7 @@ class _EpisodeSourcesDialogState extends State<_EpisodeSourcesDialog> {
 
   void _tryAutoPickEpisodeDialog() {
     if (!SettingsService.instance.stremioAutoPickStreams ||
-        SettingsService.instance.stremioAddons.isEmpty) {
+        SettingsService.instance.streamingMode) {
       return;
     }
     if (_episodeDialogAutoPickDone) {
@@ -2152,6 +2226,13 @@ class _EpisodeSourcesDialogState extends State<_EpisodeSourcesDialog> {
       return;
     }
     if (_sources.isNotEmpty) {
+      _episodeDialogAutoPickDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _playTorrentSource(_sources.first);
+      });
       return;
     }
     final pick = _pickAutoStremioStream(_addonStreams);
@@ -2934,7 +3015,7 @@ class _CustomStreamDialogState extends State<_CustomStreamDialog> {
 
   void _tryAutoPickCustomDialog() {
     if (!SettingsService.instance.stremioAutoPickStreams ||
-        SettingsService.instance.stremioAddons.isEmpty ||
+        SettingsService.instance.streamingMode ||
         _isLoading) {
       return;
     }

@@ -219,9 +219,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 8),
                   _SettingToggle(
-                    title: 'Auto-pick Stremio stream',
+                    title: 'Auto-play movie & episodes',
                     subtitle:
-                        'Movies & series: play the first Stremio link in list order (addon order in settings, then each addon’s top stream). PlayTorrio index rows still win if any.',
+                        'Start playback without the source list: first PlayTorrio result if any, else first Stremio stream (addon order). TV shows auto-start the first episode when you open them.',
                     value: _settings.stremioAutoPickStreams,
                     onChanged: (v) => _settings.setStremioAutoPickStreams(v),
                   ),

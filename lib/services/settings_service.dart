@@ -1068,8 +1068,8 @@ class SettingsService extends ChangeNotifier {
   <div class="card">
     <div class="setting-row">
       <div class="setting-info">
-        <h3>Auto-pick Stremio stream</h3>
-        <p>Movies &amp; series: play the first Stremio link (top of the combined list). Addon order follows your settings list.</p>
+        <h3>Auto-play movie &amp; episodes</h3>
+        <p>Skip the source list: first PlayTorrio hit, else first Stremio stream. TV: auto-starts the first episode when you open a show.</p>
       </div>
       <label class="toggle">
         <input type="checkbox" id="stremioAutoPickStreams">
