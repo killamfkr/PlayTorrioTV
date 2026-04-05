@@ -373,16 +373,12 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
             // Logo
             FadeTransition(
               opacity: _fade,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white, width: 2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Center(
-                  child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 42),
-                ),
+              child: Image.asset(
+                AppAssets.playtorrioMark,
+                width: 88,
+                height: 88,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
               ),
             ),
             const SizedBox(height: 24),
@@ -596,16 +592,12 @@ class _SideNav extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: expanded ? 16 : 8, vertical: 12),
             child: expanded
                 ? const Text('PlayTorrio', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5))
-                : Container(
+                : Image.asset(
+                    AppAssets.playtorrioMark,
                     width: 32,
                     height: 32,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                    ),
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
                   ),
           ),
           const SizedBox(height: 24),

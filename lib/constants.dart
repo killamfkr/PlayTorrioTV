@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+/// Bundled brand assets (see `tool/gen_playtorrio_launcher_pngs.py`).
+class AppAssets {
+  static const String playtorrioMark = 'assets/images/playtorrio_mark.png';
+}
+
 class AppColors {
   static const Color background = Color(0xFF000000);
   static const Color surface = Color(0xFF0D0D0D);
