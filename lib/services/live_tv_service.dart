@@ -267,4 +267,63 @@ class LiveTvService {
     final elapsed = now.difference(p.start).inMilliseconds;
     return (elapsed / total).clamp(0.0, 1.0);
   }
+
+  static String _normEpgName(String s) {
+    var t = s.toLowerCase().trim();
+    t = t.replaceAll(RegExp(r'[\s_\-–—.,|]+'), ' ');
+    t = t.replaceAll(RegExp(r'[^a-z0-9\s]'), '');
+    return t.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  /// Best-effort XMLTV `channel id` for a Stremio channel name/id when auto-match is on.
+  static String? matchEpgChannelId(
+    String stremioName,
+    String stremioId,
+    List<EpgChannel> epgChannels,
+  ) {
+    if (epgChannels.isEmpty) return null;
+    final nameNorm = _normEpgName(stremioName);
+    final idTrim = stremioId.trim();
+
+    for (final ch in epgChannels) {
+      if (ch.id == idTrim || ch.id.toLowerCase() == idTrim.toLowerCase()) {
+        return ch.id;
+      }
+    }
+    for (final ch in epgChannels) {
+      if (ch.displayName.toLowerCase().trim() == stremioName.toLowerCase().trim()) {
+        return ch.id;
+      }
+    }
+    if (nameNorm.isNotEmpty) {
+      for (final ch in epgChannels) {
+        if (_normEpgName(ch.displayName) == nameNorm) return ch.id;
+      }
+    }
+    if (nameNorm.length >= 4) {
+      for (final ch in epgChannels) {
+        final dn = _normEpgName(ch.displayName);
+        if (dn.isEmpty) continue;
+        if (dn.contains(nameNorm) || nameNorm.contains(dn)) {
+          if (dn.length >= 4 && nameNorm.length >= 4) return ch.id;
+        }
+      }
+    }
+    final stTokens = nameNorm.split(' ').where((t) => t.length > 2).toSet();
+    if (stTokens.length >= 2) {
+      String? bestId;
+      var bestScore = 0;
+      for (final ch in epgChannels) {
+        final dn = _normEpgName(ch.displayName);
+        final chTokens = dn.split(' ').where((t) => t.length > 2).toSet();
+        final overlap = stTokens.intersection(chTokens).length;
+        if (overlap > bestScore) {
+          bestScore = overlap;
+          bestId = ch.id;
+        }
+      }
+      if (bestScore >= 2 && bestId != null) return bestId;
+    }
+    return null;
+  }
 }

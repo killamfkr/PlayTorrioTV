@@ -199,8 +199,22 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
     return _channels.where((c) => (c.groupTitle ?? '').trim() == g).toList();
   }
 
+  /// Resolves XMLTV channel id: manual map wins; then auto-match if enabled.
+  Future<String?> _resolveStremioEpgXmltvId(StremioLiveChannel c) async {
+    final manual = _settings.stremioEpgMapping(c.addonBaseUrl, c.id);
+    if (manual != null && manual.isNotEmpty) return manual;
+    if (!_settings.stremioEpgAutoMatch || _settings.epgUrl.isEmpty) return null;
+    try {
+      await LiveTvService.instance.loadEpg(_settings.epgUrl);
+      final channels = LiveTvService.instance.cachedEpgChannelList;
+      return LiveTvService.matchEpgChannelId(c.name, c.id, channels);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<EpgProgramme?> _stremioCurrentProgramme(StremioLiveChannel c) async {
-    final xmltvId = _settings.stremioEpgMapping(c.addonBaseUrl, c.id);
+    final xmltvId = await _resolveStremioEpgXmltvId(c);
     if (xmltvId != null && xmltvId.isNotEmpty && _settings.epgUrl.isNotEmpty) {
       try {
         final map = await LiveTvService.instance.loadEpg(_settings.epgUrl);
@@ -215,22 +229,32 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
   }
 
   Future<_StremioPanelData> _loadStremioPanelData(StremioLiveChannel c) async {
-    final xmltvId = _settings.stremioEpgMapping(c.addonBaseUrl, c.id);
+    final manualId = _settings.stremioEpgMapping(c.addonBaseUrl, c.id);
+    final autoId = (manualId == null || manualId.isEmpty) && _settings.stremioEpgAutoMatch
+        ? await _resolveStremioEpgXmltvId(c)
+        : null;
+    final xmltvId = (manualId != null && manualId.isNotEmpty) ? manualId : autoId;
+
     if (xmltvId != null && xmltvId.isNotEmpty && _settings.epgUrl.isNotEmpty) {
       try {
         final full = await LiveTvService.instance.loadEpg(_settings.epgUrl);
         final list = full[xmltvId];
         if (list != null && list.isNotEmpty) {
+          final src = manualId != null && manualId.isNotEmpty ? 'manual' : 'auto';
           return _StremioPanelData(
             meta: null,
             epgMap: {c.id: list},
             guideFromXmltv: true,
+            epgLinkSource: src,
+            resolvedXmltvId: xmltvId,
           );
         }
         return _StremioPanelData(
           meta: null,
           epgMap: {},
           guideFromXmltv: false,
+          epgLinkSource: 'none',
+          resolvedXmltvId: xmltvId,
         );
       } catch (_) {}
     }
@@ -242,6 +266,8 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
       meta: r.meta,
       epgMap: r.epg,
       guideFromXmltv: false,
+      epgLinkSource: 'none',
+      resolvedXmltvId: null,
     );
   }
 
@@ -542,7 +568,8 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
                   itemBuilder: (context, i) {
                     final c = filtered[i];
                     return _StremioChannelRow(
-                      key: ValueKey('stremio_${c.addonBaseUrl}_${c.id}'),
+                      key: ValueKey(
+                          'stremio_${c.addonBaseUrl}_${c.id}_${_settings.stremioEpgAutoMatch}_${_settings.epgUrl.hashCode}'),
                       channel: c,
                       selected: i == _stremioIndex,
                       loadNowProgramme: _stremioCurrentProgramme,
@@ -1054,11 +1081,16 @@ class _StremioPanelData {
   final Map<String, dynamic>? meta;
   final Map<String, List<EpgProgramme>> epgMap;
   final bool guideFromXmltv;
+  /// 'manual' | 'auto' | 'none'
+  final String epgLinkSource;
+  final String? resolvedXmltvId;
 
   _StremioPanelData({
     required this.meta,
     required this.epgMap,
     required this.guideFromXmltv,
+    this.epgLinkSource = 'none',
+    this.resolvedXmltvId,
   });
 }
 
@@ -1088,7 +1120,8 @@ class _StremioDetailPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final logo = channel.poster;
     final mapKey = settings.stremioEpgMapping(channel.addonBaseUrl, channel.id) ?? '';
-    final key = ValueKey('${channel.addonBaseUrl}|${channel.id}|$mapKey');
+    final autoKey = '${settings.stremioEpgAutoMatch}|${settings.epgUrl.hashCode}';
+    final key = ValueKey('${channel.addonBaseUrl}|${channel.id}|$mapKey|$autoKey');
 
     return FutureBuilder<_StremioPanelData>(
       key: key,
@@ -1104,6 +1137,7 @@ class _StremioDetailPanel extends StatelessWidget {
         final desc = (data?.meta?['description'] ?? '') as String;
         final prog = LiveTvService.programmeProgress(cur, now);
         final mappedId = settings.stremioEpgMapping(channel.addonBaseUrl, channel.id);
+        final autoMatched = data?.epgLinkSource == 'auto' && (data?.resolvedXmltvId != null);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 32, 32),
@@ -1171,7 +1205,17 @@ class _StremioDetailPanel extends StatelessWidget {
               const SizedBox(height: 8),
               if (mappedId != null && mappedId.isNotEmpty)
                 Text(
-                  'EPG: linked to XMLTV id "$mappedId"${data?.guideFromXmltv == true ? '' : ' (no data)'}',
+                  'EPG: manual link → XMLTV id "$mappedId"${data?.guideFromXmltv == true ? '' : ' (no data)'}',
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12),
+                )
+              else if (autoMatched)
+                Text(
+                  'EPG: auto-matched → "${data!.resolvedXmltvId}"',
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12),
+                )
+              else if (settings.stremioEpgAutoMatch && settings.epgUrl.isNotEmpty && !hasEpg)
+                Text(
+                  'Auto EPG: no confident match — use Link EPG channel',
                   style: TextStyle(color: AppColors.textDim, fontSize: 12),
                 ),
               const SizedBox(height: 12),

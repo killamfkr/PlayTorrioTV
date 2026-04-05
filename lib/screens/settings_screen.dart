@@ -200,6 +200,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? 'Optional — add XMLTV URL via phone'
                         : 'Configured',
                   ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Auto-link Stremio to EPG',
+                    subtitle:
+                        'Match Stremio channel names to XMLTV when no manual link is set (needs EPG URL)',
+                    value: _settings.stremioEpgAutoMatch,
+                    onChanged: (v) => _settings.setStremioEpgAutoMatch(v),
+                  ),
                   const SizedBox(height: 16),
                   const Text(
                     'Stremio Addons',

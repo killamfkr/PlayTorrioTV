@@ -50,6 +50,17 @@ class SettingsService extends ChangeNotifier {
   String _epgUrl = '';
   String get epgUrl => _epgUrl;
 
+  /// When true, match Stremio TV channels to XMLTV by name/id when no manual link exists.
+  bool _stremioEpgAutoMatch = false;
+  bool get stremioEpgAutoMatch => _stremioEpgAutoMatch;
+
+  void setStremioEpgAutoMatch(bool value) {
+    _stremioEpgAutoMatch = value;
+    _prefs.setBool('stremio_epg_auto_match', value);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
   /// Stremio TV channel → XMLTV `channel id` (manual EPG link). Key: `baseUrl|||channelId`
   final Map<String, String> _stremioEpgMap = {};
 
@@ -126,6 +137,7 @@ class SettingsService extends ChangeNotifier {
     }
     _iptvM3uUrl = _prefs.getString('iptv_m3u_url') ?? '';
     _epgUrl = _prefs.getString('epg_url') ?? '';
+    _stremioEpgAutoMatch = _prefs.getBool('stremio_epg_auto_match') ?? false;
     final epgMapRaw = _prefs.getString('live_tv_stremio_epg_map');
     if (epgMapRaw != null && epgMapRaw.isNotEmpty) {
       try {
@@ -343,6 +355,7 @@ class SettingsService extends ChangeNotifier {
         'stremio_addons': _stremioAddons,
         'iptv_m3u_url': _iptvM3uUrl,
         'epg_url': _epgUrl,
+        'stremio_epg_auto_match': _stremioEpgAutoMatch,
         'live_tv_stremio_epg_map': _stremioEpgMap,
         'iptv_favorite_stream_urls': _iptvFavoriteStreamUrls,
       };
@@ -389,6 +402,10 @@ class SettingsService extends ChangeNotifier {
           _epgUrl = '';
           _prefs.setString('epg_url', '');
         }
+        if (!json.containsKey('stremio_epg_auto_match')) {
+          _stremioEpgAutoMatch = false;
+          _prefs.setBool('stremio_epg_auto_match', false);
+        }
         if (!json.containsKey('live_tv_stremio_epg_map')) {
           _stremioEpgMap.clear();
           _prefs.setString('live_tv_stremio_epg_map', '{}');
@@ -434,10 +451,12 @@ class SettingsService extends ChangeNotifier {
     _prefs.setString('stremio_subtitle_addons_json', '[]');
     _iptvM3uUrl = '';
     _epgUrl = '';
+    _stremioEpgAutoMatch = false;
     _stremioEpgMap.clear();
     _iptvFavoriteStreamUrls = [];
     _prefs.setString('iptv_m3u_url', '');
     _prefs.setString('epg_url', '');
+    _prefs.setBool('stremio_epg_auto_match', false);
     _prefs.setString('live_tv_stremio_epg_map', '{}');
     _prefs.setStringList('iptv_favorite_stream_urls', []);
     notifyListeners();
@@ -500,6 +519,10 @@ class SettingsService extends ChangeNotifier {
       _epgUrl = (json['epg_url'] as String? ?? '').trim();
       _prefs.setString('epg_url', _epgUrl);
       LiveTvService.instance.clearCache();
+    }
+    if (json.containsKey('stremio_epg_auto_match')) {
+      _stremioEpgAutoMatch = json['stremio_epg_auto_match'] as bool;
+      _prefs.setBool('stremio_epg_auto_match', _stremioEpgAutoMatch);
     }
     if (json.containsKey('live_tv_stremio_epg_map')) {
       final m = json['live_tv_stremio_epg_map'];
@@ -990,6 +1013,19 @@ class SettingsService extends ChangeNotifier {
     <input type="text" class="text-input" id="epgUrl" placeholder="https://example.com/epg.xml" autocomplete="off">
   </div>
 
+  <div class="card">
+    <div class="setting-row">
+      <div class="setting-info">
+        <h3>Auto-link Stremio channels to EPG</h3>
+        <p>Guess XMLTV channel from name when no manual link is set (needs EPG URL above)</p>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="stremioEpgAutoMatch">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
   <div class="section-title">Stremio Addons</div>
 
   <div class="card">
@@ -1097,6 +1133,7 @@ class SettingsService extends ChangeNotifier {
           document.getElementById('subtitleFontsize').value = msg.data.subtitle_fontsize || 0;
           document.getElementById('iptvM3uUrl').value = msg.data.iptv_m3u_url || '';
           document.getElementById('epgUrl').value = msg.data.epg_url || '';
+          document.getElementById('stremioEpgAutoMatch').checked = !!msg.data.stremio_epg_auto_match;
           currentAddons = msg.data.stremio_addons || [];
           liveTvStremioEpgMap = msg.data.live_tv_stremio_epg_map || {};
           iptvFavoriteUrls = msg.data.iptv_favorite_stream_urls || [];
@@ -1138,6 +1175,10 @@ class SettingsService extends ChangeNotifier {
       epgTimer = setTimeout(() => sendUpdate({ epg_url: e.target.value }), 500);
     });
 
+    document.getElementById('stremioEpgAutoMatch').addEventListener('change', (e) => {
+      sendUpdate({ stremio_epg_auto_match: e.target.checked });
+    });
+
     let rdTimer, tbTimer;
     document.getElementById('rdApiKey').addEventListener('input', (e) => {
       clearTimeout(rdTimer);
@@ -1174,6 +1215,7 @@ class SettingsService extends ChangeNotifier {
         subtitle_fontsize: parseInt(document.getElementById('subtitleFontsize').value),
         iptv_m3u_url: document.getElementById('iptvM3uUrl').value,
         epg_url: document.getElementById('epgUrl').value,
+        stremio_epg_auto_match: document.getElementById('stremioEpgAutoMatch').checked,
         stremio_addons: currentAddons,
         live_tv_stremio_epg_map: liveTvStremioEpgMap,
         iptv_favorite_stream_urls: iptvFavoriteUrls
