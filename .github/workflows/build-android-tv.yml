@@ -2,7 +2,8 @@
 # actions/checkout, etc.) — for orgs that only allow actions from repos they own.
 #
 # Checkout: raw git + GITHUB_TOKEN. SDK/Flutter: curl + unzip + git clone.
-# On push/workflow_dispatch to main: `gh release create` draft with APK assets.
+# Draft release with APK: push to main, workflow_dispatch, or pull_request from the
+# same repo (fork PRs skip release — token cannot upload to base repo).
 
 name: Build Android TV APK
 
@@ -114,18 +115,31 @@ jobs:
           fi
 
       - name: Create draft GitHub Release with APK
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        # Was only push/workflow_dispatch — PR runs skipped this step (crossed out in UI).
+        if: >
+          github.event_name == 'push' ||
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.head.repo.full_name == github.repository)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="android-tv-build-${{ github.run_number }}"
+          # run_id is unique; avoids tag collisions when several builds run close together
+          TAG="android-tv-${{ github.run_id }}"
+          TITLE_REF="${{ github.ref_name }}"
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "pull_request" ]; then
+            TITLE_REF="PR #${{ github.event.pull_request.number }} (${{ github.head_ref }})"
+          fi
           cd artifact_apk
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --draft \
-            --title "PlayTorrio TV Android (draft ${{ github.run_number }})" \
-            --notes "Automated draft from \`${{ github.sha }}\` on \`${{ github.ref_name }}\`.
+            --title "PlayTorrio TV Android — $TITLE_REF (draft, run ${{ github.run_id }})" \
+            --notes "Automated draft (**$EVENT**) from \`${{ github.sha }}\`.
 
-          Download an **.apk** below, install on Android TV (\`adb install\`), then **Publish** the release when ready." \
+          Download an **.apk** below, install on Android TV (\`adb install\`), then **Publish** the release when ready.
+
+          Tag: \`$TAG\`" \
             ./*.apk
