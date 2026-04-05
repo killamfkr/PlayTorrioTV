@@ -8,6 +8,7 @@ import 'screens/details_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/player_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/live_tv_screen.dart';
 import 'screens/audiobook_screen.dart';
 import 'screens/music_screen.dart';
 
@@ -193,6 +194,14 @@ class PlayTorrioApp extends StatelessWidget {
           RegionNavigationRule(
             fromRegion: 'sidebar',
             toRegion: 'catalog-grid',
+            direction: TraversalDirection.right,
+            strategy: RegionNavigationStrategy.memory,
+            bidirectional: true,
+            reverseStrategy: RegionNavigationStrategy.memory,
+          ),
+          RegionNavigationRule(
+            fromRegion: 'sidebar',
+            toRegion: 'live_channels',
             direction: TraversalDirection.right,
             strategy: RegionNavigationStrategy.memory,
             bidirectional: true,
@@ -478,6 +487,7 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
     _NavItem(icon: Icons.home_rounded, label: 'Home'),
     _NavItem(icon: Icons.search_rounded, label: 'Search'),
     _NavItem(icon: Icons.extension_rounded, label: 'Catalogs'),
+    _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV'),
     _NavItem(icon: Icons.headphones_rounded, label: 'Audiobooks'),
     _NavItem(icon: Icons.music_note_rounded, label: 'Music'),
     _NavItem(icon: Icons.settings_rounded, label: 'Settings'),
@@ -492,10 +502,12 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
       case 2:
         return const StremioCatalogScreen();
       case 3:
-        return const AudiobookScreen();
+        return const LiveTvScreen();
       case 4:
-        return const MusicScreen();
+        return const AudiobookScreen();
       case 5:
+        return const MusicScreen();
+      case 6:
         return const SettingsScreen();
       default:
         return const HomeScreen(category: 'home');

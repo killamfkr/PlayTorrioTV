@@ -172,6 +172,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                   const SizedBox(height: 16),
                   const Text(
+                    'Live TV',
+                    style: TextStyle(
+                      color: AppColors.purpleLight,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'IPTV playlist (M3U)',
+                    subtitle: _settings.iptvM3uUrl.isEmpty
+                        ? 'Not set — add URL via phone QR code'
+                        : 'Configured — open Live TV in the sidebar',
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'EPG (XMLTV)',
+                    subtitle: _settings.epgUrl.isEmpty
+                        ? 'Optional — add XMLTV URL via phone'
+                        : 'Configured',
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
                     'Stremio Addons',
                     style: TextStyle(
                       color: AppColors.purpleLight,
