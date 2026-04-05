@@ -1069,7 +1069,7 @@ class SettingsService extends ChangeNotifier {
     <div class="setting-row">
       <div class="setting-info">
         <h3>Auto-pick Stremio stream</h3>
-        <p>Movies &amp; series: start the best addon stream without choosing from the list (PlayTorrio sources still win if any)</p>
+        <p>Movies &amp; series: play the first Stremio link (top of the combined list). Addon order follows your settings list.</p>
       </div>
       <label class="toggle">
         <input type="checkbox" id="stremioAutoPickStreams">

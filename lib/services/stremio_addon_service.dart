@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -33,12 +34,6 @@ class StremioStream {
 
   /// Whether this stream is a deep link to another item/search.
   bool get isExternalLink => externalUrl != null && externalUrl!.isNotEmpty;
-
-  /// Playable in-app (direct URL or torrent), not an external-only deep link.
-  bool get isAutoPickCandidate =>
-      !isExternalLink &&
-      ((url != null && url!.trim().isNotEmpty) ||
-          (infoHash != null && infoHash!.trim().isNotEmpty));
 
   /// Build a magnet URI from infoHash + sources + app trackers.
   String buildMagnet(List<String> appTrackers) {
@@ -321,14 +316,14 @@ class StremioAddonService {
     }
   }
 
-  /// Fetch streams from ALL configured addons in parallel for a movie.
+  /// Fetch streams from ALL configured addons (sequential = stable order for UI / auto-pick).
   static Future<Map<String, List<StremioStream>>> fetchAllMovieStreams(
     String imdbId,
   ) async {
     return _fetchAllStreams(imdbId: imdbId, mediaType: 'movie');
   }
 
-  /// Fetch streams from ALL configured addons in parallel for a TV episode.
+  /// Fetch streams from ALL configured addons (sequential = stable order for UI / auto-pick).
   static Future<Map<String, List<StremioStream>>> fetchAllEpisodeStreams(
     String imdbId,
     int season,
@@ -342,63 +337,14 @@ class StremioAddonService {
     );
   }
 
-  static int _autoPickScore(StremioStream s) {
-    if (!s.isAutoPickCandidate) return -1;
-
-    var score = 0;
-    final q = s.quality.toLowerCase();
-    if (q.contains('2160') || q.contains('4k') || q.contains('uhd')) {
-      score += 5000;
-    } else if (q.contains('1080')) {
-      score += 4000;
-    } else if (q.contains('720')) {
-      score += 3000;
-    } else if (q.contains('480')) {
-      score += 1000;
-    }
-
-    final blob = '${s.name}\n${s.title}'.toLowerCase();
-    if (blob.contains('dolby') || blob.contains('atmos') || q.contains('dv')) {
-      score += 200;
-    }
-    if (blob.contains('[tb+]') ||
-        blob.contains('torbox') ||
-        blob.contains('[rd]') ||
-        blob.contains('real-debrid') ||
-        blob.contains('debrid')) {
-      score += 800;
-    }
-
-    final u = (s.url ?? '').toLowerCase();
-    if (u.isNotEmpty) {
-      score += 100000;
-      if (u.contains('real-debrid') ||
-          u.contains('rdcdn') ||
-          u.contains('premiumize') ||
-          u.contains('alldebrid') ||
-          u.contains('torbox') ||
-          u.contains('debrid')) {
-        score += 5000;
-      }
-    } else if (s.isTorrent) {
-      score += 10000 + s.seeders * 10;
-    }
-
-    return score;
-  }
-
-  /// Best stream for auto-play: prefers debrid/direct URLs, then resolution, then torrent seeders.
-  static StremioStream? pickBestStream(Iterable<StremioStream> streams) {
-    StremioStream? best;
-    var bestScore = -1;
-    for (final s in streams) {
-      final sc = _autoPickScore(s);
-      if (sc > bestScore) {
-        bestScore = sc;
-        best = s;
+  /// First Stremio row when Sources filter is “All”: first addon (settings order), first stream in JSON.
+  static StremioStream? firstStreamForAutoPick(Map<String, List<StremioStream>> byAddon) {
+    for (final list in byAddon.values) {
+      if (list.isNotEmpty) {
+        return list.first;
       }
     }
-    return bestScore < 0 ? null : best;
+    return null;
   }
 
   /// Parse a raw Stremio stream map (e.g. from [getStreams]) into [StremioStream].
@@ -418,23 +364,19 @@ class StremioAddonService {
     );
   }
 
-  static StremioStream? pickBestStreamFromRaw(Iterable<Map<String, dynamic>> raw) {
-    return pickBestStream(raw.map((m) => streamFromRawMap(m)));
+  /// Top stream from a single-addon [getStreams] response (JSON array order).
+  static StremioStream? firstStreamFromRaw(Iterable<Map<String, dynamic>> raw, {String addonName = ''}) {
+    for (final m in raw) {
+      return streamFromRawMap(m, addonName: addonName);
+    }
+    return null;
   }
 
-  /// Same scoring as [pickBestStream] but returns the original addon JSON map.
-  static Map<String, dynamic>? pickBestStreamRaw(Iterable<Map<String, dynamic>> raw) {
-    Map<String, dynamic>? bestMap;
-    var bestScore = -1;
+  static Map<String, dynamic>? firstRawStreamMap(Iterable<Map<String, dynamic>> raw) {
     for (final m in raw) {
-      final s = streamFromRawMap(m);
-      final sc = _autoPickScore(s);
-      if (sc > bestScore) {
-        bestScore = sc;
-        bestMap = m;
-      }
+      return m;
     }
-    return bestScore < 0 ? null : bestMap;
+    return null;
   }
 
   static Future<Map<String, List<StremioStream>>> _fetchAllStreams({
@@ -446,21 +388,15 @@ class StremioAddonService {
     final addons = SettingsService.instance.stremioAddons;
     if (addons.isEmpty || imdbId.isEmpty) return {};
 
-    final results = <String, List<StremioStream>>{};
-    final futures = <Future<MapEntry<String, List<StremioStream>>?>>[];
-
+    final results = LinkedHashMap<String, List<StremioStream>>();
     for (final baseUrl in addons) {
-      futures.add(_fetchFromAddon(
+      final entry = await _fetchFromAddon(
         baseUrl: baseUrl,
         imdbId: imdbId,
         mediaType: mediaType,
         season: season,
         episode: episode,
-      ));
-    }
-
-    final entries = await Future.wait(futures);
-    for (final entry in entries) {
+      );
       if (entry != null && entry.value.isNotEmpty) {
         results[entry.key] = entry.value;
       }

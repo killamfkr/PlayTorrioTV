@@ -102,11 +102,7 @@ void handleStremioDeepLink(BuildContext context, String deepLink) {
 }
 
 StremioStream? _pickAutoStremioStream(Map<String, List<StremioStream>> addonStreams) {
-  final flat = <StremioStream>[];
-  for (final list in addonStreams.values) {
-    flat.addAll(list);
-  }
-  return StremioAddonService.pickBestStream(flat);
+  return StremioAddonService.firstStreamForAutoPick(addonStreams);
 }
 
 class DetailsScreen extends StatefulWidget {
@@ -349,7 +345,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
     if (_isLoadingAddons || _customStremioStreams.isEmpty) {
       return;
     }
-    final pick = StremioAddonService.pickBestStreamFromRaw(_customStremioStreams);
+    final pick = StremioAddonService.firstStreamFromRaw(_customStremioStreams);
     if (pick == null) {
       return;
     }
@@ -1142,7 +1138,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
       if (!mounted) {
         return;
       }
-      final best = StremioAddonService.pickBestStreamRaw(streams);
+      final best = StremioAddonService.firstRawStreamMap(streams);
       if (best != null) {
         final season = ep['season'] as int? ?? 1;
         final epNum = ep['episode'] as int? ?? 1;
@@ -2945,7 +2941,7 @@ class _CustomStreamDialogState extends State<_CustomStreamDialog> {
     if (_customDialogAutoPickDone) {
       return;
     }
-    final best = StremioAddonService.pickBestStreamRaw(_streams);
+    final best = StremioAddonService.firstRawStreamMap(_streams);
     if (best == null) {
       return;
     }

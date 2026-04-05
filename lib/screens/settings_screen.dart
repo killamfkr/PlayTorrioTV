@@ -221,7 +221,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _SettingToggle(
                     title: 'Auto-pick Stremio stream',
                     subtitle:
-                        'Movies & series: play the best addon stream without choosing from the list (PlayTorrio index sources still win if any)',
+                        'Movies & series: play the first Stremio link in list order (addon order in settings, then each addon’s top stream). PlayTorrio index rows still win if any.',
                     value: _settings.stremioAutoPickStreams,
                     onChanged: (v) => _settings.setStremioAutoPickStreams(v),
                   ),
