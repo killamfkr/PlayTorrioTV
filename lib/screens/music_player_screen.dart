@@ -200,7 +200,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                           fit: BoxFit.cover,
                           color: Colors.black.withValues(alpha: 0.7),
                           colorBlendMode: BlendMode.darken,
-                          errorWidget: (_, __, ___) => Container(color: AppColors.background),
+                          errorWidget: (_, _, _) => Container(color: AppColors.background),
                         )
                       : Container(color: AppColors.background);
                 },
@@ -320,7 +320,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     ? CachedNetworkImage(
                         imageUrl: coverUrl,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           color: AppColors.cardBg,
                           child: const Icon(Icons.music_note, color: AppColors.textDim, size: 64),
                         ),
@@ -872,7 +872,7 @@ class _QueueTileState extends State<_QueueTile> {
                             width: 36,
                             height: 36,
                             fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => Container(
+                            errorWidget: (_, _, _) => Container(
                               width: 36,
                               height: 36,
                               color: AppColors.cardBg,
