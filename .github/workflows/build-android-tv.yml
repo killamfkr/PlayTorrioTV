@@ -54,11 +54,16 @@ jobs:
           yes | sdkmanager --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
           yes | sdkmanager --sdk_root="$SDK" --licenses || true
 
+      # GITHUB_PATH only affects *later* steps — do not call flutter in this step.
       - name: Install Flutter (stable)
         run: |
           set -euo pipefail
           git clone --depth=1 --branch stable https://github.com/flutter/flutter.git "$HOME/flutter"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Flutter doctor
+        run: |
+          set -euo pipefail
           flutter doctor -v
           flutter --version
 
