@@ -586,15 +586,22 @@ class SettingsService extends ChangeNotifier {
 
     // Primary: connected-socket trick — works on ALL platforms & connection types
     // (WiFi, ethernet, USB tethering, etc.)
-    // Connects a TCP socket toward a public IP; OS reveals the local IP that
+    // Connects a TCP socket toward a public IP; OS should reveal the local IP that
     // would route there. Connection is closed immediately, no data is sent.
+    //
+    // Dart SDK bug: on some platforms `Socket.address` wrongly equals
+    // `Socket.remoteAddress`, so the QR showed 8.8.8.8 instead of the LAN IP.
+    // Only accept when local ≠ remote and the address looks like a private LAN IP.
     try {
       final socket = await Socket.connect('8.8.8.8', 53,
           timeout: const Duration(seconds: 2));
-      // Local binding (peer is `remoteAddress`). Older Dart docs conflated the two.
       final localAddr = socket.address.address;
+      final remoteAddr = socket.remoteAddress.address;
       socket.destroy();
-      if (localAddr != '0.0.0.0' && localAddr != '127.0.0.1') {
+      if (localAddr != remoteAddr &&
+          localAddr != '0.0.0.0' &&
+          localAddr != '127.0.0.1' &&
+          _isPrivateLanIpv4(localAddr)) {
         _localIp = localAddr;
       }
     } catch (_) {}
@@ -648,6 +655,14 @@ class SettingsService extends ChangeNotifier {
         _handleHttp(request);
       }
     });
+  }
+
+  /// True for RFC1918 / typical LAN IPv4 (what we want in the remote-settings QR).
+  static bool _isPrivateLanIpv4(String ip) {
+    if (ip.startsWith('10.')) return true;
+    if (ip.startsWith('192.168.')) return true;
+    if (RegExp(r'^172\.(1[6-9]|2\d|3[01])\.').hasMatch(ip)) return true;
+    return false;
   }
 
   /// Pick the most likely reachable LAN IP from a list of candidates.
