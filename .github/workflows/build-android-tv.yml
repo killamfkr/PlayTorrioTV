@@ -54,12 +54,16 @@ jobs:
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
           # GITHUB_PATH is not active in this step — call sdkmanager by full path
-          # Without `set +o pipefail`, `yes | sdkmanager` fails: sdkmanager closes stdin,
-          # yes hits SIGPIPE → pipeline non-zero under pipefail even when install OK.
+          # `yes | sdkmanager`: with pipefail, SIGPIPE on yes fails the step even if sdkmanager OK.
+          # Without pipefail, $? can be yes's exit — use PIPESTATUS[1] for sdkmanager.
           set +o pipefail
           yes | "$SM" --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sm_pkg="${PIPESTATUS[1]}"
           yes | "$SM" --sdk_root="$SDK" --licenses
+          sm_lic="${PIPESTATUS[1]}"
           set -o pipefail
+          if [ "$sm_pkg" -ne 0 ]; then echo "::error::sdkmanager packages failed with $sm_pkg"; exit "$sm_pkg"; fi
+          if [ "$sm_lic" -ne 0 ]; then echo "::error::sdkmanager licenses failed with $sm_lic"; exit "$sm_lic"; fi
 
       # GITHUB_PATH only affects *later* steps — do not call flutter in this step.
       - name: Install Flutter (stable)
