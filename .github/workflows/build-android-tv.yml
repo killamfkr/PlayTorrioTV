@@ -11,15 +11,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Needed to create tags + draft releases (GITHUB_TOKEN)
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
@@ -81,11 +80,14 @@ jobs:
           path: artifact_apk/*.apk
           if-no-files-found: error
 
+      # PRs use a read-only token on fork PRs — only push/manual runs create releases.
       - name: Create draft GitHub Release with APK
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
+          make_latest: false
           generate_release_notes: true
           tag_name: android-tv-build-${{ github.run_number }}
           name: PlayTorrio TV Android (draft ${{ github.run_number }})
