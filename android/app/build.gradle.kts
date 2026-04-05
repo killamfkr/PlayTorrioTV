@@ -21,7 +21,9 @@ android {
 
     defaultConfig {
         applicationId = "com.playtorrio.playtorrio_tv"
-        minSdk = flutter.minSdkVersion
+        // Flutter’s template default is 24; 23 is the lowest version Flutter’s build allows.
+        // Explicit 23 helps some older Fire TV / sticks still on API 23.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
