@@ -51,8 +51,9 @@ jobs:
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          yes | sdkmanager --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
-          yes | sdkmanager --sdk_root="$SDK" --licenses || true
+          # Must succeed — do not hide failures with || true
+          yes | sdkmanager --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --sdk_root="$SDK" --licenses
 
       # GITHUB_PATH only affects *later* steps — do not call flutter in this step.
       - name: Install Flutter (stable)
@@ -64,8 +65,19 @@ jobs:
       - name: Flutter doctor
         run: |
           set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms" || { echo "::error::Android SDK platforms missing"; exit 1; }
           flutter doctor -v
           flutter --version
+
+      # Gradle reads sdk.dir from here; Flutter also resolves the SDK more reliably.
+      - name: Write android/local.properties
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/android-sdk}}"
+          FLUTTER_SDK="$HOME/flutter"
+          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$SDK" "$FLUTTER_SDK" > android/local.properties
+          cat android/local.properties
 
       - name: Flutter pub get
         run: flutter pub get
