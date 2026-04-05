@@ -1069,7 +1069,7 @@ class SettingsService extends ChangeNotifier {
     <div class="setting-row">
       <div class="setting-info">
         <h3>Auto-play movie &amp; episodes</h3>
-        <p>Skip the source list: first PlayTorrio hit, else first Stremio stream. TV: auto-starts the first episode when you open a show.</p>
+        <p>When you choose a movie or episode, play the first link (PlayTorrio first if any, else first Stremio).</p>
       </div>
       <label class="toggle">
         <input type="checkbox" id="stremioAutoPickStreams">

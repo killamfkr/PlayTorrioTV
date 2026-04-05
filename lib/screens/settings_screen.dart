@@ -221,7 +221,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _SettingToggle(
                     title: 'Auto-play movie & episodes',
                     subtitle:
-                        'Start playback without the source list: first PlayTorrio result if any, else first Stremio stream (addon order). TV shows auto-start the first episode when you open them.',
+                        'When you pick a movie or episode, play the first link automatically: PlayTorrio index first if any, else first Stremio stream (addon order).',
                     value: _settings.stremioAutoPickStreams,
                     onChanged: (v) => _settings.setStremioAutoPickStreams(v),
                   ),

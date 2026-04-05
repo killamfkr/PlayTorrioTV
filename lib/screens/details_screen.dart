@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -146,8 +144,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
   int _cachedUnifiedHash = 0;
 
   bool _movieAutoPlayDone = false;
-  bool _tvFirstEpisodeAutoPlayDone = false;
-  bool _customTvFirstEpisodeAutoPlayDone = false;
 
   @override
   void initState() {
@@ -263,51 +259,11 @@ class _DetailsScreenState extends State<DetailsScreen> {
       final data = await TmdbService.getTvSeason(widget.id, seasonNumber);
       if (mounted) {
         setState(() => _seasonData = data);
-        _tryAutoPlayFirstTvEpisode(data);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _focusKey(_firstRightItemKey);
         });
       }
     } catch (_) {}
-  }
-
-  /// When opening a TMDB TV show, auto-start the first episode of the loaded season once.
-  void _tryAutoPlayFirstTvEpisode(Map<String, dynamic> seasonData) {
-    if (!_autoPlaySourcesActive ||
-        widget.mediaType != 'tv' ||
-        _isCustomStremioId ||
-        _tvFirstEpisodeAutoPlayDone) {
-      return;
-    }
-    final eps = seasonData['episodes'] as List?;
-    if (eps == null || eps.isEmpty) {
-      return;
-    }
-    final first = eps.first as Map<String, dynamic>;
-    final epNum = first['episode_number'] as int?;
-    if (epNum == null) {
-      return;
-    }
-    _tvFirstEpisodeAutoPlayDone = true;
-    unawaited(_showEpisodeSources(first));
-  }
-
-  /// Custom Stremio TV: auto-start first episode of the current season once.
-  void _tryAutoPlayFirstCustomTvEpisode() {
-    if (!_autoPlaySourcesActive ||
-        !_isCustomStremioId ||
-        widget.mediaType != 'tv' ||
-        _customTvFirstEpisodeAutoPlayDone ||
-        _customSeasonData == null) {
-      return;
-    }
-    final map = _customSeasonData!['episodesBySeason'] as Map<int, List<Map<String, dynamic>>>?;
-    final list = map?[_selectedSeason];
-    if (list == null || list.isEmpty) {
-      return;
-    }
-    _customTvFirstEpisodeAutoPlayDone = true;
-    unawaited(_showCustomEpisodeSources(list.first));
   }
 
   Future<void> _loadSources() async {
@@ -494,7 +450,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
               }
               _isLoadingAddons = false;
             });
-            _tryAutoPlayFirstCustomTvEpisode();
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _focusKey(_firstRightItemKey);
             });
