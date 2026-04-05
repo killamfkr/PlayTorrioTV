@@ -184,7 +184,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: 'IPTV playlist (M3U)',
                     subtitle: _settings.iptvM3uUrl.isEmpty
                         ? 'Not set — add URL via phone QR code'
-                        : 'Configured — open Live TV in the sidebar',
+                        : 'Configured — Live TV → IPTV playlist tab',
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'Stremio live TV',
+                    subtitle: _settings.stremioAddons.isEmpty
+                        ? 'Add TV-capable Stremio addons via phone — Live TV → Stremio tab'
+                        : 'TV catalogs from addons — open Live TV → Stremio tab',
                   ),
                   const SizedBox(height: 8),
                   _SettingInfo(
