@@ -1,6 +1,8 @@
-# Builds a release APK for Android TV (Leanback is declared in AndroidManifest.xml).
-# - Uploads workflow artifact playtorrio-android-tv-release
-# - On push / manual runs (not PRs): creates a draft GitHub Release with the APK attached
+# Builds a release APK for Android TV without marketplace Actions (no `uses:` for
+# actions/checkout, etc.) — for orgs that only allow actions from repos they own.
+#
+# Checkout: raw git + GITHUB_TOKEN. SDK/Flutter: curl + unzip + git clone.
+# On push/workflow_dispatch to main: `gh release create` draft with APK assets.
 
 name: Build Android TV APK
 
@@ -11,7 +13,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Needed to create tags + draft releases (GITHUB_TOKEN)
 permissions:
   contents: write
 
@@ -21,32 +22,45 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        run: |
+          set -euo pipefail
+          git init
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --no-tags --depth=1 origin "${{ github.sha }}"
+          git checkout FETCH_HEAD
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-          cache-dependency-path: |
-            android/**/*.gradle*
-            android/**/*.gradle.kts
-            android/**/gradle-wrapper.properties
+      - name: Install JDK 17
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y openjdk-17-jdk-headless
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> "$GITHUB_ENV"
 
-      # sdkmanager expects space-separated package ids — a multiline YAML block is
-      # treated as one invalid package name on some runners.
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools platforms;android-35 build-tools;35.0.0
+      - name: Install Android command-line tools
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          # Pin a known cmdline-tools build (adjust if Google removes this zip)
+          curl -fsSL -o /tmp/cmdline.zip \
+            "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          unzip -q /tmp/cmdline.zip -d "$SDK/cmdline-tools"
+          mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | sdkmanager --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          yes | sdkmanager --sdk_root="$SDK" --licenses || true
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
+      - name: Install Flutter (stable)
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --branch stable https://github.com/flutter/flutter.git "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          flutter doctor -v
+          flutter --version
 
       - name: Flutter pub get
         run: flutter pub get
@@ -59,40 +73,32 @@ jobs:
         env:
           GRADLE_OPTS: -Xmx4g
 
-      # Output path varies (flutter-apk vs apk/release). Collect every release APK.
-      - name: Collect APKs for artifact
+      - name: Collect APKs
         run: |
-          set -e
+          set -euo pipefail
           mkdir -p artifact_apk
           find build/app/outputs -type f -name '*.apk' -print
           find build/app/outputs -type f -name '*.apk' -exec cp -f {} artifact_apk/ \;
           ls -la artifact_apk/
-          count=$(find artifact_apk -maxdepth 1 -name '*.apk' | wc -l)
-          if [ "$count" -eq 0 ]; then
+          n=$(find artifact_apk -maxdepth 1 -name '*.apk' | wc -l)
+          if [ "$n" -eq 0 ]; then
             echo "::error::No APK files found under build/app/outputs"
             exit 1
           fi
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: playtorrio-android-tv-release
-          path: artifact_apk/*.apk
-          if-no-files-found: error
-
-      # PRs use a read-only token on fork PRs — only push/manual runs create releases.
       - name: Create draft GitHub Release with APK
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          draft: true
-          make_latest: false
-          generate_release_notes: true
-          tag_name: android-tv-build-${{ github.run_number }}
-          name: PlayTorrio TV Android (draft ${{ github.run_number }})
-          body: |
-            Automated draft build from `${{ github.sha }}` on `${{ github.ref_name }}`.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="android-tv-build-${{ github.run_number }}"
+          cd artifact_apk
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --draft \
+            --title "PlayTorrio TV Android (draft ${{ github.run_number }})" \
+            --notes "Automated draft from \`${{ github.sha }}\` on \`${{ github.ref_name }}\`.
 
-            Download the **.apk** asset below, install on your Android TV (e.g. `adb install`), then **edit this release** and click **Publish** when you are ready.
-          files: artifact_apk/*.apk
+          Download an **.apk** below, install on Android TV (\`adb install\`), then **Publish** the release when ready." \
+            ./*.apk
