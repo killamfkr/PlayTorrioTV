@@ -1,0 +1,63 @@
+# Builds a release APK for Android TV (Leanback is declared in AndroidManifest.xml).
+# Artifact: app-release.apk (install via adb or file manager on the TV).
+
+name: Build Android TV APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle*
+            android/**/*.gradle.kts
+            android/**/gradle-wrapper.properties
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build release APK
+        run: flutter build apk --release
+        env:
+          GRADLE_OPTS: -Xmx4g
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: playtorrio-android-tv-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
