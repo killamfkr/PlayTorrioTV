@@ -1,5 +1,6 @@
 # Builds a release APK for Android TV (Leanback is declared in AndroidManifest.xml).
-# Artifact: app-release.apk (install via adb or file manager on the TV).
+# - Uploads workflow artifact playtorrio-android-tv-release
+# - On push / manual runs (not PRs): creates a draft GitHub Release with the APK attached
 
 name: Build Android TV APK
 
@@ -10,10 +11,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -74,3 +80,17 @@ jobs:
           name: playtorrio-android-tv-release
           path: artifact_apk/*.apk
           if-no-files-found: error
+
+      - name: Create draft GitHub Release with APK
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          tag_name: android-tv-build-${{ github.run_number }}
+          name: PlayTorrio TV Android (draft ${{ github.run_number }})
+          body: |
+            Automated draft build from `${{ github.sha }}` on `${{ github.ref_name }}`.
+
+            Download the **.apk** asset below, install on your Android TV (e.g. `adb install`), then **edit this release** and click **Publish** when you are ready.
+          files: artifact_apk/*.apk
