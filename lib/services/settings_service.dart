@@ -61,6 +61,17 @@ class SettingsService extends ChangeNotifier {
     _broadcastSettings();
   }
 
+  /// When true, auto-select the best Stremio addon stream for movies/series (no list pick).
+  bool _stremioAutoPickStreams = false;
+  bool get stremioAutoPickStreams => _stremioAutoPickStreams;
+
+  void setStremioAutoPickStreams(bool value) {
+    _stremioAutoPickStreams = value;
+    _prefs.setBool('stremio_auto_pick_streams', value);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
   /// Stremio TV channel → XMLTV `channel id` (manual EPG link). Key: `baseUrl|||channelId`
   final Map<String, String> _stremioEpgMap = {};
 
@@ -138,6 +149,7 @@ class SettingsService extends ChangeNotifier {
     _iptvM3uUrl = _prefs.getString('iptv_m3u_url') ?? '';
     _epgUrl = _prefs.getString('epg_url') ?? '';
     _stremioEpgAutoMatch = _prefs.getBool('stremio_epg_auto_match') ?? false;
+    _stremioAutoPickStreams = _prefs.getBool('stremio_auto_pick_streams') ?? false;
     final epgMapRaw = _prefs.getString('live_tv_stremio_epg_map');
     if (epgMapRaw != null && epgMapRaw.isNotEmpty) {
       try {
@@ -356,6 +368,7 @@ class SettingsService extends ChangeNotifier {
         'iptv_m3u_url': _iptvM3uUrl,
         'epg_url': _epgUrl,
         'stremio_epg_auto_match': _stremioEpgAutoMatch,
+        'stremio_auto_pick_streams': _stremioAutoPickStreams,
         'live_tv_stremio_epg_map': _stremioEpgMap,
         'iptv_favorite_stream_urls': _iptvFavoriteStreamUrls,
       };
@@ -405,6 +418,10 @@ class SettingsService extends ChangeNotifier {
         if (!json.containsKey('stremio_epg_auto_match')) {
           _stremioEpgAutoMatch = false;
           _prefs.setBool('stremio_epg_auto_match', false);
+        }
+        if (!json.containsKey('stremio_auto_pick_streams')) {
+          _stremioAutoPickStreams = false;
+          _prefs.setBool('stremio_auto_pick_streams', false);
         }
         if (!json.containsKey('live_tv_stremio_epg_map')) {
           _stremioEpgMap.clear();
@@ -457,6 +474,8 @@ class SettingsService extends ChangeNotifier {
     _prefs.setString('iptv_m3u_url', '');
     _prefs.setString('epg_url', '');
     _prefs.setBool('stremio_epg_auto_match', false);
+    _stremioAutoPickStreams = false;
+    _prefs.setBool('stremio_auto_pick_streams', false);
     _prefs.setString('live_tv_stremio_epg_map', '{}');
     _prefs.setStringList('iptv_favorite_stream_urls', []);
     notifyListeners();
@@ -523,6 +542,10 @@ class SettingsService extends ChangeNotifier {
     if (json.containsKey('stremio_epg_auto_match')) {
       _stremioEpgAutoMatch = json['stremio_epg_auto_match'] as bool;
       _prefs.setBool('stremio_epg_auto_match', _stremioEpgAutoMatch);
+    }
+    if (json.containsKey('stremio_auto_pick_streams')) {
+      _stremioAutoPickStreams = json['stremio_auto_pick_streams'] as bool;
+      _prefs.setBool('stremio_auto_pick_streams', _stremioAutoPickStreams);
     }
     if (json.containsKey('live_tv_stremio_epg_map')) {
       final m = json['live_tv_stremio_epg_map'];
@@ -1026,6 +1049,19 @@ class SettingsService extends ChangeNotifier {
     </div>
   </div>
 
+  <div class="card">
+    <div class="setting-row">
+      <div class="setting-info">
+        <h3>Auto-pick Stremio stream</h3>
+        <p>Movies &amp; series: start the best addon stream without choosing from the list (PlayTorrio sources still win if any)</p>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="stremioAutoPickStreams">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
   <div class="section-title">Stremio Addons</div>
 
   <div class="card">
@@ -1134,6 +1170,7 @@ class SettingsService extends ChangeNotifier {
           document.getElementById('iptvM3uUrl').value = msg.data.iptv_m3u_url || '';
           document.getElementById('epgUrl').value = msg.data.epg_url || '';
           document.getElementById('stremioEpgAutoMatch').checked = !!msg.data.stremio_epg_auto_match;
+          document.getElementById('stremioAutoPickStreams').checked = !!msg.data.stremio_auto_pick_streams;
           currentAddons = msg.data.stremio_addons || [];
           liveTvStremioEpgMap = msg.data.live_tv_stremio_epg_map || {};
           iptvFavoriteUrls = msg.data.iptv_favorite_stream_urls || [];
@@ -1179,6 +1216,10 @@ class SettingsService extends ChangeNotifier {
       sendUpdate({ stremio_epg_auto_match: e.target.checked });
     });
 
+    document.getElementById('stremioAutoPickStreams').addEventListener('change', (e) => {
+      sendUpdate({ stremio_auto_pick_streams: e.target.checked });
+    });
+
     let rdTimer, tbTimer;
     document.getElementById('rdApiKey').addEventListener('input', (e) => {
       clearTimeout(rdTimer);
@@ -1216,6 +1257,7 @@ class SettingsService extends ChangeNotifier {
         iptv_m3u_url: document.getElementById('iptvM3uUrl').value,
         epg_url: document.getElementById('epgUrl').value,
         stremio_epg_auto_match: document.getElementById('stremioEpgAutoMatch').checked,
+        stremio_auto_pick_streams: document.getElementById('stremioAutoPickStreams').checked,
         stremio_addons: currentAddons,
         live_tv_stremio_epg_map: liveTvStremioEpgMap,
         iptv_favorite_stream_urls: iptvFavoriteUrls

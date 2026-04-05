@@ -218,6 +218,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Auto-pick Stremio stream',
+                    subtitle:
+                        'Movies & series: play the best addon stream without choosing from the list (PlayTorrio index sources still win if any)',
+                    value: _settings.stremioAutoPickStreams,
+                    onChanged: (v) => _settings.setStremioAutoPickStreams(v),
+                  ),
+                  const SizedBox(height: 8),
                   _SettingInfo(
                     title: 'Subtitle Addons',
                     subtitle: _settings.stremioAddons.isEmpty

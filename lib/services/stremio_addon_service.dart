@@ -34,6 +34,12 @@ class StremioStream {
   /// Whether this stream is a deep link to another item/search.
   bool get isExternalLink => externalUrl != null && externalUrl!.isNotEmpty;
 
+  /// Playable in-app (direct URL or torrent), not an external-only deep link.
+  bool get isAutoPickCandidate =>
+      !isExternalLink &&
+      ((url != null && url!.trim().isNotEmpty) ||
+          (infoHash != null && infoHash!.trim().isNotEmpty));
+
   /// Build a magnet URI from infoHash + sources + app trackers.
   String buildMagnet(List<String> appTrackers) {
     if (!isTorrent) return '';
@@ -334,6 +340,101 @@ class StremioAddonService {
       season: season,
       episode: episode,
     );
+  }
+
+  static int _autoPickScore(StremioStream s) {
+    if (!s.isAutoPickCandidate) return -1;
+
+    var score = 0;
+    final q = s.quality.toLowerCase();
+    if (q.contains('2160') || q.contains('4k') || q.contains('uhd')) {
+      score += 5000;
+    } else if (q.contains('1080')) {
+      score += 4000;
+    } else if (q.contains('720')) {
+      score += 3000;
+    } else if (q.contains('480')) {
+      score += 1000;
+    }
+
+    final blob = '${s.name}\n${s.title}'.toLowerCase();
+    if (blob.contains('dolby') || blob.contains('atmos') || q.contains('dv')) {
+      score += 200;
+    }
+    if (blob.contains('[tb+]') ||
+        blob.contains('torbox') ||
+        blob.contains('[rd]') ||
+        blob.contains('real-debrid') ||
+        blob.contains('debrid')) {
+      score += 800;
+    }
+
+    final u = (s.url ?? '').toLowerCase();
+    if (u.isNotEmpty) {
+      score += 100000;
+      if (u.contains('real-debrid') ||
+          u.contains('rdcdn') ||
+          u.contains('premiumize') ||
+          u.contains('alldebrid') ||
+          u.contains('torbox') ||
+          u.contains('debrid')) {
+        score += 5000;
+      }
+    } else if (s.isTorrent) {
+      score += 10000 + s.seeders * 10;
+    }
+
+    return score;
+  }
+
+  /// Best stream for auto-play: prefers debrid/direct URLs, then resolution, then torrent seeders.
+  static StremioStream? pickBestStream(Iterable<StremioStream> streams) {
+    StremioStream? best;
+    var bestScore = -1;
+    for (final s in streams) {
+      final sc = _autoPickScore(s);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = s;
+      }
+    }
+    return bestScore < 0 ? null : best;
+  }
+
+  /// Parse a raw Stremio stream map (e.g. from [getStreams]) into [StremioStream].
+  static StremioStream streamFromRawMap(Map<String, dynamic> map, {String addonName = ''}) {
+    final hints = map['behaviorHints'] as Map<String, dynamic>? ?? {};
+    final sourcesRaw = map['sources'] as List? ?? [];
+    return StremioStream(
+      addonName: addonName,
+      name: (map['name'] ?? '') as String,
+      title: (map['title'] ?? map['description'] ?? '') as String,
+      infoHash: map['infoHash'] as String?,
+      fileIdx: map['fileIdx'] as int?,
+      url: map['url'] as String?,
+      externalUrl: map['externalUrl'] as String?,
+      filename: hints['filename'] as String?,
+      sources: sourcesRaw.cast<String>(),
+    );
+  }
+
+  static StremioStream? pickBestStreamFromRaw(Iterable<Map<String, dynamic>> raw) {
+    return pickBestStream(raw.map((m) => streamFromRawMap(m)));
+  }
+
+  /// Same scoring as [pickBestStream] but returns the original addon JSON map.
+  static Map<String, dynamic>? pickBestStreamRaw(Iterable<Map<String, dynamic>> raw) {
+    Map<String, dynamic>? bestMap;
+    var bestScore = -1;
+    for (final m in raw) {
+      final s = streamFromRawMap(m);
+      final sc = _autoPickScore(s);
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestMap = m;
+      }
+    }
+    return bestScore < 0 ? null : bestMap;
   }
 
   static Future<Map<String, List<StremioStream>>> _fetchAllStreams({
