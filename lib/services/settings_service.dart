@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'live_tv_service.dart';
 import 'stremio_addon_service.dart';
+import 'stremio_live_tv_service.dart';
 
 class SettingsService extends ChangeNotifier {
   static final SettingsService instance = SettingsService._();
