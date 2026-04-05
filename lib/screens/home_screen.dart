@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:dpad/dpad.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../constants.dart';
@@ -582,7 +581,7 @@ class _HeroInfo extends StatelessWidget {
                       imageUrl: TmdbApi.logoUrl(logoPath),
                       fit: BoxFit.contain,
                       alignment: Alignment.centerLeft,
-                      errorWidget: (_, __, ___) => Text(
+                      errorWidget: (_, _, _) => Text(
                         title,
                         style: const TextStyle(
                           color: Colors.white,
@@ -738,7 +737,7 @@ class _ContentSliderState extends State<_ContentSlider> with SingleTickerProvide
               itemCount: widget.items.length,
               itemBuilder: (_, index) {
                 final item = widget.items[index] as Map<String, dynamic>;
-                final onFocused = () {
+                void onFocused() {
                   widget.onItemFocused(item);
                   _scrollToIndex(index);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -751,7 +750,7 @@ class _ContentSliderState extends State<_ContentSlider> with SingleTickerProvide
                       );
                     }
                   });
-                };
+                }
                 if (widget.useBackdrop) {
                   return _BackdropCard(
                     item: item,
@@ -866,8 +865,8 @@ class _BackdropCardState extends State<_BackdropCard> with SingleTickerProviderS
                                   imageUrl: isFullUrl ? backdrop : TmdbApi.backdropUrl(backdrop, size: 'w780'),
                                   fit: BoxFit.cover,
                                   memCacheWidth: 500,
-                                  placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                  errorWidget: (_, __, ___) => Container(
+                                  placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.movie, color: AppColors.textDim),
                                   ),
@@ -963,7 +962,6 @@ class _PosterCardState extends State<_PosterCard> with SingleTickerProviderState
   @override
   Widget build(BuildContext context) {
     final posterPath = widget.item['poster_path'] as String?;
-    final title = (widget.item['title'] ?? widget.item['name'] ?? '') as String;
     final isFullUrl = posterPath != null && posterPath.startsWith('http');
 
     return Padding(
@@ -1007,8 +1005,8 @@ class _PosterCardState extends State<_PosterCard> with SingleTickerProviderState
                               imageUrl: isFullUrl ? posterPath : TmdbApi.posterUrl(posterPath),
                               fit: BoxFit.cover,
                               memCacheWidth: 260,
-                              placeholder: (_, __) => Container(color: AppColors.cardBg),
-                              errorWidget: (_, __, ___) => Container(
+                              placeholder: (_, _) => Container(color: AppColors.cardBg),
+                              errorWidget: (_, _, _) => Container(
                                 color: AppColors.cardBg,
                                 child: const Icon(Icons.movie, color: AppColors.textDim),
                               ),
@@ -1316,9 +1314,9 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard>
                                   imageUrl: TmdbApi.backdropUrl(backdrop, size: 'w780'),
                                   fit: BoxFit.cover,
                                   memCacheWidth: 500,
-                                  placeholder: (_, __) =>
+                                  placeholder: (_, _) =>
                                       Container(color: AppColors.cardBg),
-                                  errorWidget: (_, __, ___) => Container(
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.movie,
                                         color: AppColors.textDim),

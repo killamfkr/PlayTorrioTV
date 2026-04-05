@@ -115,7 +115,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen> {
                 fit: BoxFit.cover,
                 color: Colors.black.withValues(alpha: 0.7),
                 colorBlendMode: BlendMode.darken,
-                errorWidget: (_, __, ___) => Container(color: AppColors.background),
+                errorWidget: (_, _, _) => Container(color: AppColors.background),
               ),
             ),
             Positioned.fill(
@@ -230,10 +230,10 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen> {
             child: CachedNetworkImage(
               imageUrl: widget.audiobook.thumbUrl,
               fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => CachedNetworkImage(
+              errorWidget: (_, _, _) => CachedNetworkImage(
                 imageUrl: widget.audiobook.coverImage,
                 fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(
+                errorWidget: (_, _, _) => Container(
                   color: AppColors.cardBg,
                   child: const Icon(Icons.headphones, color: AppColors.textDim, size: 64),
                 ),

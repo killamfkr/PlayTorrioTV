@@ -46,8 +46,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (mounted) {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const MainShell(),
-          transitionsBuilder: (_, animation, __, child) =>
+          pageBuilder: (_, _, _) => const MainShell(),
+          transitionsBuilder: (_, animation, _, child) =>
               FadeTransition(opacity: animation, child: child),
           transitionDuration: const Duration(milliseconds: 600),
         ),
@@ -68,9 +68,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     final result = await Navigator.of(context).push<String>(
       PageRouteBuilder(
         opaque: false,
-        pageBuilder: (_, __, ___) =>
+        pageBuilder: (_, _, _) =>
             _NameEditorOverlay(initialName: currentName, canDelete: canDelete),
-        transitionsBuilder: (_, animation, __, child) =>
+        transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
         transitionDuration: const Duration(milliseconds: 200),
       ),

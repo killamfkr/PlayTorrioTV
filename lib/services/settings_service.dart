@@ -74,9 +74,9 @@ class SettingsService extends ChangeNotifier {
     _cacheSizeMB = _prefs.getInt('cache_size_mb') ?? 512;
     _subtitleFontsize = _prefs.getInt('subtitle_fontsize') ?? 0;
     // Migrate old absolute pixel values to new relative divisor values
-    const _oldToNew = {28: 14, 36: 10, 48: 7};
-    if (_oldToNew.containsKey(_subtitleFontsize)) {
-      _subtitleFontsize = _oldToNew[_subtitleFontsize]!;
+    const oldToNewSubtitleSize = {28: 14, 36: 10, 48: 7};
+    if (oldToNewSubtitleSize.containsKey(_subtitleFontsize)) {
+      _subtitleFontsize = oldToNewSubtitleSize[_subtitleFontsize]!;
       _prefs.setInt('subtitle_fontsize', _subtitleFontsize);
     }
     _iptvM3uUrl = _prefs.getString('iptv_m3u_url') ?? '';
@@ -458,8 +458,8 @@ class SettingsService extends ChangeNotifier {
     try {
       final socket = await Socket.connect('8.8.8.8', 53,
           timeout: const Duration(seconds: 2));
-      // `Socket.address` is the *remote* peer — use `localAddress` for LAN IP.
-      final localAddr = socket.localAddress.address;
+      // Local binding (peer is `remoteAddress`). Older Dart docs conflated the two.
+      final localAddr = socket.address.address;
       socket.destroy();
       if (localAddr != '0.0.0.0' && localAddr != '127.0.0.1') {
         _localIp = localAddr;

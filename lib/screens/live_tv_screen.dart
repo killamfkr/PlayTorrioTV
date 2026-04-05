@@ -423,7 +423,7 @@ class _ChannelRow extends StatelessWidget {
                               imageUrl: logo,
                               fit: BoxFit.cover,
                               memCacheWidth: 88,
-                              errorWidget: (_, __, ___) => Container(
+                              errorWidget: (_, _, _) => Container(
                                 color: AppColors.cardBg,
                                 child: const Icon(Icons.tv, color: AppColors.textDim, size: 22),
                               ),
@@ -518,7 +518,7 @@ class _ChannelDetailPanel extends StatelessWidget {
                     height: 120,
                     fit: BoxFit.cover,
                     memCacheWidth: 240,
-                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                    errorWidget: (_, _, _) => const SizedBox.shrink(),
                   ),
                 ),
               if (logo != null && logo.startsWith('http')) const SizedBox(width: 20),

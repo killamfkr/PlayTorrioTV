@@ -560,8 +560,8 @@ class _TmdbResultCardState extends State<_TmdbResultCard> {
                                   imageUrl: TmdbApi.posterUrl(posterPath),
                                   fit: BoxFit.cover,
                                   memCacheWidth: 240,
-                                  placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                  errorWidget: (_, __, ___) => Container(
+                                  placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.movie, color: AppColors.textDim),
                                   ),
@@ -673,8 +673,8 @@ class _StremioResultCardState extends State<_StremioResultCard> {
                                       imageUrl: poster,
                                       fit: BoxFit.cover,
                                       memCacheWidth: 240,
-                                      placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                      errorWidget: (_, __, ___) => Container(
+                                      placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                      errorWidget: (_, _, _) => Container(
                                         color: AppColors.cardBg,
                                         child: const Icon(Icons.movie, color: AppColors.textDim),
                                       ),

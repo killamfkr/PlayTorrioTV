@@ -1,7 +1,5 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'stream_service.dart';
-
 class WatchEntry {
   final int tmdbId;
   final String imdbId;
@@ -35,7 +33,7 @@ class WatchEntry {
 
   /// Unique key: one entry per show/movie, per episode for TV
   String get key => season != null && episode != null
-      ? '${tmdbId}_s${season}e${episode}'
+      ? '${tmdbId}_s${season}e$episode'
       : '$tmdbId';
 
   double get progress =>

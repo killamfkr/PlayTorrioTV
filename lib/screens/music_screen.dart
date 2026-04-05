@@ -724,7 +724,7 @@ class _MusicScreenState extends State<MusicScreen> {
                 child: CachedNetworkImage(
                   imageUrl: album.cover,
                   width: 48, height: 48, fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => const SizedBox(width: 48, height: 48),
+                  errorWidget: (_, _, _) => const SizedBox(width: 48, height: 48),
                 ),
               ),
             const SizedBox(width: 12),
@@ -1320,7 +1320,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                               width: 48,
                               height: 48,
                               fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => _coverFallback(),
+                              errorWidget: (_, _, _) => _coverFallback(),
                             )
                           : _coverFallback(),
                     ),
@@ -1584,9 +1584,8 @@ class _MusicTrackCard extends StatefulWidget {
   final VoidCallback onToggleLike;
   final VoidCallback? onAddToPlaylist;
   final VoidCallback? onFocused;
-  final String region;
 
-  const _MusicTrackCard({required this.track, required this.isLiked, required this.onSelect, required this.onToggleLike, this.onAddToPlaylist, this.onFocused, this.region = 'music_tracks'});
+  const _MusicTrackCard({required this.track, required this.isLiked, required this.onSelect, required this.onToggleLike, this.onAddToPlaylist, this.onFocused});
 
   @override
   State<_MusicTrackCard> createState() => _MusicTrackCardState();
@@ -1635,7 +1634,7 @@ class _MusicTrackCardState extends State<_MusicTrackCard> with SingleTickerProvi
           return KeyEventResult.ignored;
         },
         child: DpadFocusable(
-          region: widget.region,
+          region: 'music_tracks',
           autoScroll: false,
           onFocus: () {
             setState(() => _focused = true);
@@ -1678,8 +1677,8 @@ class _MusicTrackCardState extends State<_MusicTrackCard> with SingleTickerProvi
                                     ? CachedNetworkImage(
                                         imageUrl: widget.track.cover,
                                         fit: BoxFit.cover,
-                                        placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                        errorWidget: (_, __, ___) => Container(
+                                        placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                        errorWidget: (_, _, _) => Container(
                                           color: AppColors.cardBg,
                                           child: const Icon(Icons.music_note, color: AppColors.textDim, size: 32),
                                         ),
@@ -1767,9 +1766,8 @@ class _AlbumCard extends StatefulWidget {
   final MusicAlbum album;
   final VoidCallback onSelect;
   final VoidCallback? onFocused;
-  final String region;
 
-  const _AlbumCard({required this.album, required this.onSelect, this.onFocused, this.region = 'music_tracks'});
+  const _AlbumCard({required this.album, required this.onSelect, this.onFocused});
 
   @override
   State<_AlbumCard> createState() => _AlbumCardState();
@@ -1800,7 +1798,7 @@ class _AlbumCardState extends State<_AlbumCard> with SingleTickerProviderStateMi
     return GestureDetector(
       onTap: widget.onSelect,
       child: DpadFocusable(
-        region: widget.region,
+        region: 'music_tracks',
         autoScroll: false,
         onFocus: () {
           setState(() => _focused = true);
@@ -1843,8 +1841,8 @@ class _AlbumCardState extends State<_AlbumCard> with SingleTickerProviderStateMi
                                   ? CachedNetworkImage(
                                       imageUrl: widget.album.cover,
                                       fit: BoxFit.cover,
-                                      placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                      errorWidget: (_, __, ___) => Container(
+                                      placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                      errorWidget: (_, _, _) => Container(
                                         color: AppColors.cardBg,
                                         child: const Icon(Icons.album, color: AppColors.textDim, size: 32),
                                       ),
@@ -2059,7 +2057,7 @@ class _PlaylistTrackTileState extends State<_PlaylistTrackTile> {
                                   width: 40,
                                   height: 40,
                                   fit: BoxFit.cover,
-                                  errorWidget: (_, __, ___) => Container(
+                                  errorWidget: (_, _, _) => Container(
                                     width: 40,
                                     height: 40,
                                     color: AppColors.cardBg,

@@ -287,7 +287,7 @@ class _SettingToggleState extends State<_SettingToggle> {
                 Switch(
                   value: widget.value,
                   onChanged: widget.onChanged,
-                  activeColor: AppColors.purpleLight,
+                  activeThumbColor: AppColors.purpleLight,
                   activeTrackColor: AppColors.darkPurple,
                 ),
               ],

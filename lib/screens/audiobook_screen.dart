@@ -644,7 +644,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                         width: 48,
                         height: 48,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           width: 48,
                           height: 48,
                           color: AppColors.cardBg,
@@ -793,11 +793,11 @@ class _AudiobookCardState extends State<_AudiobookCard> with SingleTickerProvide
                               CachedNetworkImage(
                                 imageUrl: widget.book.thumbUrl,
                                 fit: BoxFit.cover,
-                                placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                errorWidget: (_, __, ___) => CachedNetworkImage(
+                                placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                errorWidget: (_, _, _) => CachedNetworkImage(
                                   imageUrl: widget.book.coverImage,
                                   fit: BoxFit.cover,
-                                  errorWidget: (_, __, ___) => Container(
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.headphones, color: AppColors.textDim, size: 32),
                                   ),

@@ -298,7 +298,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
   Future<void> _fetchStremioCustomIdContent(Map<String, dynamic> item) async {
     final customId = item['id']?.toString() ?? '';
     final addonBaseUrl = item['_addonBaseUrl']?.toString() ?? '';
-    final addonName = item['_addonName']?.toString() ?? 'Unknown';
     final type = item['type']?.toString() ?? (widget.mediaType == 'tv' ? 'series' : 'movie');
 
     if (customId.isEmpty || addonBaseUrl.isEmpty) return;
@@ -752,13 +751,13 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       fit: BoxFit.contain,
                       alignment: Alignment.centerLeft,
                       memCacheWidth: 500,
-                      placeholder: (_, __) => Text(
+                      placeholder: (_, _) => Text(
                         _title,
                         style: const TextStyle(color: AppColors.textPrimary, fontSize: 44, fontWeight: FontWeight.w800, height: 1.1),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      errorWidget: (_, __, ___) => Text(
+                      errorWidget: (_, _, _) => Text(
                         _title,
                         style: const TextStyle(color: AppColors.textPrimary, fontSize: 44, fontWeight: FontWeight.w800, height: 1.1),
                         maxLines: 2,
@@ -1320,7 +1319,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: filters.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (_, index) {
                 final filter = filters[index];
                 return _FilterChip(
@@ -1594,7 +1593,7 @@ class _EpisodeRowState extends State<_EpisodeRow> with AutomaticKeepAliveClientM
                             imageUrl: TmdbApi.backdropUrl(stillPath, size: 'w300'),
                             fit: BoxFit.cover,
                             memCacheWidth: 300,
-                            placeholder: (_, __) => const ColoredBox(color: AppColors.surfaceLight),
+                            placeholder: (_, _) => const ColoredBox(color: AppColors.surfaceLight),
                           )
                         : const _StillPlaceholder(),
                   ),
@@ -1639,7 +1638,7 @@ class _RecommendationRow extends StatefulWidget {
   final Map<String, dynamic> item;
   final VoidCallback onSelected;
 
-  const _RecommendationRow({super.key, required this.item, required this.onSelected});
+  const _RecommendationRow({required this.item, required this.onSelected});
 
   @override
   State<_RecommendationRow> createState() => _RecommendationRowState();
@@ -1695,7 +1694,7 @@ class _RecommendationRowState extends State<_RecommendationRow> with AutomaticKe
                             imageUrl: TmdbApi.posterUrl(posterPath, size: 'w185'),
                             fit: BoxFit.cover,
                             memCacheWidth: 185,
-                            placeholder: (_, __) => const ColoredBox(color: AppColors.surfaceLight),
+                            placeholder: (_, _) => const ColoredBox(color: AppColors.surfaceLight),
                           )
                         : const _PosterPlaceholder(),
                   ),
@@ -1827,7 +1826,7 @@ class _SourceRow extends StatefulWidget {
   final VoidCallback? onSelect;
   final bool autofocus;
 
-  const _SourceRow({super.key, required this.source, this.onSelect, this.autofocus = false});
+  const _SourceRow({required this.source, this.onSelect, this.autofocus = false});
 
   @override
   State<_SourceRow> createState() => _SourceRowState();
@@ -2163,7 +2162,7 @@ class _EpisodeSourcesDialogState extends State<_EpisodeSourcesDialog> {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: filters.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 6),
+                        separatorBuilder: (_, _) => const SizedBox(width: 6),
                         itemBuilder: (_, i) {
                           final f = filters[i];
                           return _FilterChip(
@@ -2301,7 +2300,7 @@ class _StremioStreamRow extends StatefulWidget {
   final VoidCallback? onSelect;
   final bool autofocus;
 
-  const _StremioStreamRow({super.key, required this.stream, this.onSelect, this.autofocus = false});
+  const _StremioStreamRow({required this.stream, this.onSelect, this.autofocus = false});
 
   @override
   State<_StremioStreamRow> createState() => _StremioStreamRowState();
@@ -2523,7 +2522,7 @@ class _CollectionItemRowState extends State<_CollectionItemRow> {
                             imageUrl: widget.thumbnail!,
                             fit: BoxFit.cover,
                             memCacheWidth: 170,
-                            placeholder: (_, __) => const ColoredBox(color: AppColors.surfaceLight),
+                            placeholder: (_, _) => const ColoredBox(color: AppColors.surfaceLight),
                           )
                         : const _PosterPlaceholder(),
                   ),
@@ -2604,7 +2603,7 @@ class _CustomEpisodeRowState extends State<_CustomEpisodeRow> {
                               imageUrl: thumb,
                               fit: BoxFit.cover,
                               memCacheWidth: 350,
-                              placeholder: (_, __) => const ColoredBox(color: AppColors.surfaceLight),
+                              placeholder: (_, _) => const ColoredBox(color: AppColors.surfaceLight),
                             )
                           : const _StillPlaceholder(),
                     ),
@@ -2654,7 +2653,6 @@ class _CustomStreamRowState extends State<_CustomStreamRow> {
     final name = (widget.stream['name'] ?? '') as String;
     final title = (widget.stream['title'] ?? '') as String;
     final infoHash = widget.stream['infoHash'] as String?;
-    final url = widget.stream['url'] as String?;
     final isTorrent = infoHash != null && infoHash.isNotEmpty;
 
     return Padding(

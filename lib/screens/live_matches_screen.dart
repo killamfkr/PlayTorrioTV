@@ -198,7 +198,7 @@ class _MatchCard extends StatelessWidget {
                 imageUrl: LiveMatchService.badgeUrl(match.homeBadge),
                 width: 36,
                 height: 36,
-                errorWidget: (_, __, ___) => const Icon(Icons.sports, color: Colors.white54, size: 36),
+                errorWidget: (_, _, _) => const Icon(Icons.sports, color: Colors.white54, size: 36),
               )
             else
               const Icon(Icons.sports, color: Colors.white54, size: 36),
@@ -246,7 +246,7 @@ class _MatchCard extends StatelessWidget {
                 imageUrl: LiveMatchService.badgeUrl(match.awayBadge),
                 width: 36,
                 height: 36,
-                errorWidget: (_, __, ___) => const Icon(Icons.sports, color: Colors.white54, size: 36),
+                errorWidget: (_, _, _) => const Icon(Icons.sports, color: Colors.white54, size: 36),
               )
             else
               const Icon(Icons.sports, color: Colors.white54, size: 36),
@@ -533,7 +533,7 @@ class _MatchPlayerPageState extends State<_MatchPlayerPage> {
                         padding: const EdgeInsets.only(right: 6),
                         child: DpadFocusable(
                           onSelect: () => _switchStream(s),
-                          builder: (_, focused, __) => Container(
+                          builder: (context, focused, _) => Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: s.embedUrl == _currentUrl
@@ -568,7 +568,7 @@ class _MatchPlayerPageState extends State<_MatchPlayerPage> {
                 child: Center(
                   child: DpadFocusable(
                     onSelect: _enterMouseMode,
-                    builder: (_, focused, __) => Container(
+                    builder: (context, focused, _) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       decoration: BoxDecoration(
                         color: focused ? Colors.white : Colors.black54,
@@ -628,7 +628,7 @@ class _MatchPlayerPageState extends State<_MatchPlayerPage> {
                 right: 12,
                 child: DpadFocusable(
                   onSelect: () => Navigator.of(context).pop(),
-                  builder: (_, focused, __) => Container(
+                  builder: (context, focused, _) => Container(
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
