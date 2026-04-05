@@ -30,13 +30,12 @@ jobs:
             android/**/*.gradle.kts
             android/**/gradle-wrapper.properties
 
+      # sdkmanager expects space-separated package ids — a multiline YAML block is
+      # treated as one invalid package name on some runners.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
