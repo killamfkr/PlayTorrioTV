@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -388,7 +387,7 @@ class StremioAddonService {
     final addons = SettingsService.instance.stremioAddons;
     if (addons.isEmpty || imdbId.isEmpty) return {};
 
-    final results = LinkedHashMap<String, List<StremioStream>>();
+    final results = <String, List<StremioStream>>{};
     for (final baseUrl in addons) {
       final entry = await _fetchFromAddon(
         baseUrl: baseUrl,
