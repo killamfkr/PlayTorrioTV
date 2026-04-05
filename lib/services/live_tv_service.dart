@@ -33,6 +33,14 @@ class EpgProgramme {
   });
 }
 
+/// XMLTV `<channel id="...">` entry for manual Stremio ↔ EPG mapping.
+class EpgChannel {
+  final String id;
+  final String displayName;
+
+  const EpgChannel({required this.id, required this.displayName});
+}
+
 class LiveTvService {
   LiveTvService._();
   static final LiveTvService instance = LiveTvService._();
@@ -41,12 +49,16 @@ class LiveTvService {
   String? _cachedM3uSource;
   Map<String, List<EpgProgramme>>? _epgByChannel;
   String? _cachedEpgSource;
+  List<EpgChannel> _cachedEpgChannelList = [];
+
+  List<EpgChannel> get cachedEpgChannelList => List.unmodifiable(_cachedEpgChannelList);
 
   void clearCache() {
     _cachedChannels = null;
     _cachedM3uSource = null;
     _epgByChannel = null;
     _cachedEpgSource = null;
+    _cachedEpgChannelList = [];
   }
 
   /// Fetches and parses the M3U at [url]. Uses cache when [url] unchanged.
@@ -143,8 +155,29 @@ class LiveTvService {
     if (xmlStr.startsWith('\uFEFF')) xmlStr = xmlStr.substring(1);
     final map = parseXmltv(xmlStr);
     _epgByChannel = map;
+    _cachedEpgChannelList = parseXmltvChannels(xmlStr);
     _cachedEpgSource = trimmed;
     return map;
+  }
+
+  static List<EpgChannel> parseXmltvChannels(String xmlStr) {
+    final doc = XmlDocument.parse(xmlStr);
+    final out = <EpgChannel>[];
+    for (final node in doc.findAllElements('channel')) {
+      final id = node.getAttribute('id');
+      if (id == null || id.isEmpty) continue;
+      var name = id;
+      for (final dn in node.findAllElements('display-name')) {
+        final t = dn.innerText.trim();
+        if (t.isNotEmpty) {
+          name = t;
+          break;
+        }
+      }
+      out.add(EpgChannel(id: id, displayName: name));
+    }
+    out.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+    return out;
   }
 
   static Map<String, List<EpgProgramme>> parseXmltv(String xmlStr) {
@@ -223,5 +256,15 @@ class LiveTvService {
       if (p.start.isAfter(now)) return p;
     }
     return null;
+  }
+
+  /// 0–1 through the current slot, or null if not in range.
+  static double? programmeProgress(EpgProgramme? p, DateTime now) {
+    if (p == null) return null;
+    if (now.isBefore(p.start) || !now.isBefore(p.end)) return null;
+    final total = p.end.difference(p.start).inMilliseconds;
+    if (total <= 0) return null;
+    final elapsed = now.difference(p.start).inMilliseconds;
+    return (elapsed / total).clamp(0.0, 1.0);
   }
 }

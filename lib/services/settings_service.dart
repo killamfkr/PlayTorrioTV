@@ -50,6 +50,51 @@ class SettingsService extends ChangeNotifier {
   String _epgUrl = '';
   String get epgUrl => _epgUrl;
 
+  /// Stremio TV channel → XMLTV `channel id` (manual EPG link). Key: `baseUrl|||channelId`
+  final Map<String, String> _stremioEpgMap = {};
+
+  Map<String, String> get stremioEpgMap => Map.unmodifiable(_stremioEpgMap);
+
+  static String stremioEpgMapKey(String addonBaseUrl, String channelId) =>
+      '$addonBaseUrl|||$channelId';
+
+  String? stremioEpgMapping(String addonBaseUrl, String channelId) =>
+      _stremioEpgMap[stremioEpgMapKey(addonBaseUrl, channelId)];
+
+  void setStremioEpgMapping(String addonBaseUrl, String channelId, String? xmltvChannelId) {
+    final k = stremioEpgMapKey(addonBaseUrl, channelId);
+    if (xmltvChannelId == null || xmltvChannelId.isEmpty) {
+      _stremioEpgMap.remove(k);
+    } else {
+      _stremioEpgMap[k] = xmltvChannelId;
+    }
+    _prefs.setString('live_tv_stremio_epg_map', jsonEncode(_stremioEpgMap));
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  List<String> _iptvFavoriteStreamUrls = [];
+  List<String> get iptvFavoriteStreamUrls => List.unmodifiable(_iptvFavoriteStreamUrls);
+
+  bool isIptvFavorite(String streamUrl) => _iptvFavoriteStreamUrls.contains(streamUrl);
+
+  void setIptvFavorite(String streamUrl, bool favorite) {
+    if (favorite) {
+      if (!_iptvFavoriteStreamUrls.contains(streamUrl)) {
+        _iptvFavoriteStreamUrls.add(streamUrl);
+      }
+    } else {
+      _iptvFavoriteStreamUrls.remove(streamUrl);
+    }
+    _prefs.setStringList('iptv_favorite_stream_urls', _iptvFavoriteStreamUrls);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  void toggleIptvFavorite(String streamUrl) {
+    setIptvFavorite(streamUrl, !isIptvFavorite(streamUrl));
+  }
+
   /// Notifier for addon changes (catalogs, home screen, etc.)
   static final ValueNotifier<int> addonChangeNotifier = ValueNotifier<int>(0);
 
@@ -81,6 +126,16 @@ class SettingsService extends ChangeNotifier {
     }
     _iptvM3uUrl = _prefs.getString('iptv_m3u_url') ?? '';
     _epgUrl = _prefs.getString('epg_url') ?? '';
+    final epgMapRaw = _prefs.getString('live_tv_stremio_epg_map');
+    if (epgMapRaw != null && epgMapRaw.isNotEmpty) {
+      try {
+        final m = jsonDecode(epgMapRaw) as Map<String, dynamic>;
+        _stremioEpgMap
+          ..clear()
+          ..addAll(m.map((k, v) => MapEntry(k, v.toString())));
+      } catch (_) {}
+    }
+    _iptvFavoriteStreamUrls = _prefs.getStringList('iptv_favorite_stream_urls') ?? [];
     _stremioAddons = _prefs.getStringList('stremio_addons') ?? [];
     // Also keep a JSON copy for native Kotlin to read
     _prefs.setString('stremio_addons_json', jsonEncode(_stremioAddons));
@@ -288,6 +343,8 @@ class SettingsService extends ChangeNotifier {
         'stremio_addons': _stremioAddons,
         'iptv_m3u_url': _iptvM3uUrl,
         'epg_url': _epgUrl,
+        'live_tv_stremio_epg_map': _stremioEpgMap,
+        'iptv_favorite_stream_urls': _iptvFavoriteStreamUrls,
       };
 
   /// Persist every profile-scoped setting into a single JSON blob keyed by
@@ -332,6 +389,14 @@ class SettingsService extends ChangeNotifier {
           _epgUrl = '';
           _prefs.setString('epg_url', '');
         }
+        if (!json.containsKey('live_tv_stremio_epg_map')) {
+          _stremioEpgMap.clear();
+          _prefs.setString('live_tv_stremio_epg_map', '{}');
+        }
+        if (!json.containsKey('iptv_favorite_stream_urls')) {
+          _iptvFavoriteStreamUrls = [];
+          _prefs.setStringList('iptv_favorite_stream_urls', []);
+        }
         _syncSubtitleAddonUrls();
         LiveTvService.instance.clearCache();
         notifyListeners();
@@ -369,8 +434,12 @@ class SettingsService extends ChangeNotifier {
     _prefs.setString('stremio_subtitle_addons_json', '[]');
     _iptvM3uUrl = '';
     _epgUrl = '';
+    _stremioEpgMap.clear();
+    _iptvFavoriteStreamUrls = [];
     _prefs.setString('iptv_m3u_url', '');
     _prefs.setString('epg_url', '');
+    _prefs.setString('live_tv_stremio_epg_map', '{}');
+    _prefs.setStringList('iptv_favorite_stream_urls', []);
     notifyListeners();
   }
 
@@ -431,6 +500,24 @@ class SettingsService extends ChangeNotifier {
       _epgUrl = (json['epg_url'] as String? ?? '').trim();
       _prefs.setString('epg_url', _epgUrl);
       LiveTvService.instance.clearCache();
+    }
+    if (json.containsKey('live_tv_stremio_epg_map')) {
+      final m = json['live_tv_stremio_epg_map'];
+      _stremioEpgMap.clear();
+      if (m is Map) {
+        m.forEach((k, v) {
+          if (k != null && v != null) {
+            _stremioEpgMap[k.toString()] = v.toString();
+          }
+        });
+      }
+      _prefs.setString('live_tv_stremio_epg_map', jsonEncode(_stremioEpgMap));
+      StremioLiveTvService.instance.clearCache();
+    }
+    if (json.containsKey('iptv_favorite_stream_urls')) {
+      _iptvFavoriteStreamUrls =
+          (json['iptv_favorite_stream_urls'] as List).map((e) => e.toString()).toList();
+      _prefs.setStringList('iptv_favorite_stream_urls', _iptvFavoriteStreamUrls);
     }
     notifyListeners();
   }
@@ -936,6 +1023,8 @@ class SettingsService extends ChangeNotifier {
     let reconnectTimer;
     const statusEl = document.getElementById('status');
     let currentAddons = [];
+    let liveTvStremioEpgMap = {};
+    let iptvFavoriteUrls = [];
 
     function renderAddons() {
       const list = document.getElementById('addonList');
@@ -1009,6 +1098,8 @@ class SettingsService extends ChangeNotifier {
           document.getElementById('iptvM3uUrl').value = msg.data.iptv_m3u_url || '';
           document.getElementById('epgUrl').value = msg.data.epg_url || '';
           currentAddons = msg.data.stremio_addons || [];
+          liveTvStremioEpgMap = msg.data.live_tv_stremio_epg_map || {};
+          iptvFavoriteUrls = msg.data.iptv_favorite_stream_urls || [];
           renderAddons();
           updateDebridUI();
         }
@@ -1083,7 +1174,9 @@ class SettingsService extends ChangeNotifier {
         subtitle_fontsize: parseInt(document.getElementById('subtitleFontsize').value),
         iptv_m3u_url: document.getElementById('iptvM3uUrl').value,
         epg_url: document.getElementById('epgUrl').value,
-        stremio_addons: currentAddons
+        stremio_addons: currentAddons,
+        live_tv_stremio_epg_map: liveTvStremioEpgMap,
+        iptv_favorite_stream_urls: iptvFavoriteUrls
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');

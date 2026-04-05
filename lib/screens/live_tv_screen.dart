@@ -22,6 +22,8 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
   /// 0 = Stremio TV catalogs, 1 = M3U / XMLTV playlist
   int _sourceTab = 0;
 
+  static const String _kFavoritesGroup = '__favorites__';
+
   // --- IPTV (M3U) ---
   List<LiveTvChannel> _channels = [];
   Map<String, List<EpgProgramme>> _epg = {};
@@ -73,6 +75,8 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
     final epgUrl = _settings.epgUrl;
     if (m3u != _lastM3u || epgUrl != _lastEpg) {
       _load();
+    } else {
+      setState(() {});
     }
   }
 
@@ -133,10 +137,16 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
         _lastEpg = '';
         _channels = [];
         _epg = {};
-        _loading = false;
+        _loading = epgUrl.isNotEmpty;
         _error = null;
         _selectedIndex = 0;
       });
+      if (epgUrl.isNotEmpty) {
+        try {
+          await LiveTvService.instance.loadEpg(epgUrl);
+        } catch (_) {}
+        if (mounted) setState(() => _loading = false);
+      }
       return;
     }
     setState(() {
@@ -156,7 +166,9 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
       if (!mounted) return;
       final groups = _groupTitles(ch);
       final sel = _selectedGroup;
-      final groupOk = sel == null || groups.contains(sel);
+      final groupOk = sel == null ||
+          sel == _kFavoritesGroup ||
+          groups.contains(sel);
       setState(() {
         _lastM3u = m3u;
         _lastEpg = epgUrl;
@@ -164,10 +176,7 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
         _epg = epg;
         _loading = false;
         if (!groupOk) _selectedGroup = null;
-        final g = _selectedGroup;
-        final filtered = g == null
-            ? ch
-            : ch.where((c) => (c.groupTitle ?? '').trim() == g).toList();
+        final filtered = _channelsForGroup(_selectedGroup);
         _selectedIndex =
             filtered.isEmpty ? 0 : _selectedIndex.clamp(0, filtered.length - 1);
       });
@@ -182,6 +191,60 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
     }
   }
 
+  List<LiveTvChannel> _channelsForGroup(String? g) {
+    if (g == _kFavoritesGroup) {
+      return _channels.where((c) => _settings.isIptvFavorite(c.streamUrl)).toList();
+    }
+    if (g == null) return _channels;
+    return _channels.where((c) => (c.groupTitle ?? '').trim() == g).toList();
+  }
+
+  Future<EpgProgramme?> _stremioCurrentProgramme(StremioLiveChannel c) async {
+    final xmltvId = _settings.stremioEpgMapping(c.addonBaseUrl, c.id);
+    if (xmltvId != null && xmltvId.isNotEmpty && _settings.epgUrl.isNotEmpty) {
+      try {
+        final map = await LiveTvService.instance.loadEpg(_settings.epgUrl);
+        return LiveTvService.currentProgramme(map, xmltvId, DateTime.now());
+      } catch (_) {}
+    }
+    final r = await StremioLiveTvService.instance.getMetaAndEpg(
+      addonBaseUrl: c.addonBaseUrl,
+      channelId: c.id,
+    );
+    return LiveTvService.currentProgramme(r.epg, c.id, DateTime.now());
+  }
+
+  Future<_StremioPanelData> _loadStremioPanelData(StremioLiveChannel c) async {
+    final xmltvId = _settings.stremioEpgMapping(c.addonBaseUrl, c.id);
+    if (xmltvId != null && xmltvId.isNotEmpty && _settings.epgUrl.isNotEmpty) {
+      try {
+        final full = await LiveTvService.instance.loadEpg(_settings.epgUrl);
+        final list = full[xmltvId];
+        if (list != null && list.isNotEmpty) {
+          return _StremioPanelData(
+            meta: null,
+            epgMap: {c.id: list},
+            guideFromXmltv: true,
+          );
+        }
+        return _StremioPanelData(
+          meta: null,
+          epgMap: {},
+          guideFromXmltv: false,
+        );
+      } catch (_) {}
+    }
+    final r = await StremioLiveTvService.instance.getMetaAndEpg(
+      addonBaseUrl: c.addonBaseUrl,
+      channelId: c.id,
+    );
+    return _StremioPanelData(
+      meta: r.meta,
+      epgMap: r.epg,
+      guideFromXmltv: false,
+    );
+  }
+
   List<String> _groupTitles(List<LiveTvChannel> ch) {
     final s = <String>{};
     for (final c in ch) {
@@ -192,11 +255,7 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
     return list;
   }
 
-  List<LiveTvChannel> get _filteredChannels {
-    final g = _selectedGroup;
-    if (g == null) return _channels;
-    return _channels.where((c) => (c.groupTitle ?? '').trim() == g).toList();
-  }
+  List<LiveTvChannel> get _filteredChannels => _channelsForGroup(_selectedGroup);
 
   LiveTvChannel? get _selectedChannel {
     final list = _filteredChannels;
@@ -283,6 +342,7 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
     final cur = LiveTvService.currentProgramme(_epg, ch.tvgId, now);
     final next = LiveTvService.nextProgramme(_epg, ch.tvgId, now);
     final groups = _groupTitles(_channels);
+    final hasFav = _settings.iptvFavoriteStreamUrls.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,33 +365,41 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
             ],
           ),
         ),
-        if (groups.isNotEmpty)
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              children: [
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _GroupChip(
+                label: 'All',
+                selected: _selectedGroup == null,
+                onSelect: () => setState(() {
+                  _selectedGroup = null;
+                  _selectedIndex = 0;
+                }),
+              ),
+              if (hasFav)
                 _GroupChip(
-                  label: 'All',
-                  selected: _selectedGroup == null,
+                  label: 'Favorites',
+                  selected: _selectedGroup == _kFavoritesGroup,
                   onSelect: () => setState(() {
-                    _selectedGroup = null;
+                    _selectedGroup = _kFavoritesGroup;
                     _selectedIndex = 0;
                   }),
                 ),
-                for (final g in groups)
-                  _GroupChip(
-                    label: g,
-                    selected: _selectedGroup == g,
-                    onSelect: () => setState(() {
-                      _selectedGroup = g;
-                      _selectedIndex = 0;
-                    }),
-                  ),
-              ],
-            ),
+              for (final g in groups)
+                _GroupChip(
+                  label: g,
+                  selected: _selectedGroup == g,
+                  onSelect: () => setState(() {
+                    _selectedGroup = g;
+                    _selectedIndex = 0;
+                  }),
+                ),
+            ],
           ),
+        ),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,11 +411,15 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
                   itemCount: filtered.length,
                   itemBuilder: (context, i) {
                     final c = filtered[i];
-                    final onNow = LiveTvService.currentProgramme(_epg, c.tvgId, DateTime.now());
+                    final now = DateTime.now();
+                    final onNow = LiveTvService.currentProgramme(_epg, c.tvgId, now);
+                    final prog = LiveTvService.programmeProgress(onNow, now);
                     return _ChannelRow(
                       channel: c,
                       selected: i == _selectedIndex,
                       subtitle: onNow?.title,
+                      epgProgress: prog,
+                      isFavorite: _settings.isIptvFavorite(c.streamUrl),
                       autofocus: i == 0,
                       onFocus: () => setState(() => _selectedIndex = i),
                       onSelect: () => _play(c),
@@ -361,6 +433,12 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
                   nowPlaying: cur,
                   nextPlaying: next,
                   hasEpg: _epg.isNotEmpty && ch.tvgId != null,
+                  nowProgress: LiveTvService.programmeProgress(cur, now),
+                  isFavorite: _settings.isIptvFavorite(ch.streamUrl),
+                  onToggleFavorite: () {
+                    _settings.toggleIptvFavorite(ch.streamUrl);
+                    setState(() {});
+                  },
                 ),
               ),
             ],
@@ -464,8 +542,10 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
                   itemBuilder: (context, i) {
                     final c = filtered[i];
                     return _StremioChannelRow(
+                      key: ValueKey('stremio_${c.addonBaseUrl}_${c.id}'),
                       channel: c,
                       selected: i == _stremioIndex,
+                      loadNowProgramme: _stremioCurrentProgramme,
                       autofocus: i == 0,
                       onFocus: () => setState(() => _stremioIndex = i),
                       onSelect: () => _playStremio(c),
@@ -475,8 +555,12 @@ class _LiveTvScreenState extends State<LiveTvScreen> {
               ),
               Expanded(
                 child: _StremioDetailPanel(
+                  key: ValueKey('detail_${sel.addonBaseUrl}_${sel.id}'),
                   channel: sel,
+                  settings: _settings,
                   onWatch: () => _playStremio(sel),
+                  onMappingChanged: () => setState(() {}),
+                  loadPanel: _loadStremioPanelData,
                 ),
               ),
             ],
@@ -654,6 +738,8 @@ class _ChannelRow extends StatelessWidget {
   final LiveTvChannel channel;
   final bool selected;
   final String? subtitle;
+  final double? epgProgress;
+  final bool isFavorite;
   final bool autofocus;
   final VoidCallback onFocus;
   final VoidCallback onSelect;
@@ -662,6 +748,8 @@ class _ChannelRow extends StatelessWidget {
     required this.channel,
     required this.selected,
     this.subtitle,
+    this.epgProgress,
+    required this.isFavorite,
     required this.autofocus,
     required this.onFocus,
     required this.onSelect,
@@ -741,7 +829,27 @@ class _ChannelRow extends StatelessWidget {
                               fontSize: 12,
                             ),
                           ),
+                        if (epgProgress != null) ...[
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: epgProgress,
+                              minHeight: 3,
+                              backgroundColor: Colors.white.withValues(alpha: 0.12),
+                              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purpleLight),
+                            ),
+                          ),
+                        ],
                       ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                      color: isFavorite ? Colors.amber : AppColors.textDim,
+                      size: 20,
                     ),
                   ),
                   Icon(
@@ -760,36 +868,75 @@ class _ChannelRow extends StatelessWidget {
   }
 }
 
-class _StremioChannelRow extends StatelessWidget {
+class _StremioChannelRow extends StatefulWidget {
   final StremioLiveChannel channel;
   final bool selected;
   final bool autofocus;
   final VoidCallback onFocus;
   final VoidCallback onSelect;
+  final Future<EpgProgramme?> Function(StremioLiveChannel c) loadNowProgramme;
 
   const _StremioChannelRow({
+    super.key,
     required this.channel,
     required this.selected,
     required this.autofocus,
     required this.onFocus,
     required this.onSelect,
+    required this.loadNowProgramme,
   });
 
   @override
+  State<_StremioChannelRow> createState() => _StremioChannelRowState();
+}
+
+class _StremioChannelRowState extends State<_StremioChannelRow> {
+  EpgProgramme? _now;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StremioChannelRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.channel.id != widget.channel.id ||
+        oldWidget.channel.addonBaseUrl != widget.channel.addonBaseUrl) {
+      _refresh();
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final p = await widget.loadNowProgramme(widget.channel);
+    if (mounted) {
+      setState(() {
+        _now = p;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final logo = channel.poster;
+    final logo = widget.channel.poster;
+    final now = DateTime.now();
+    final prog = LiveTvService.programmeProgress(_now, now);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: DpadFocusable(
-        autofocus: autofocus,
+        autofocus: widget.autofocus,
         region: 'live_channels',
-        onFocus: onFocus,
-        onSelect: onSelect,
+        onFocus: widget.onFocus,
+        onSelect: widget.onSelect,
         builder: (context, focused, _) {
-          final active = selected || focused;
+          final active = widget.selected || focused;
           return GestureDetector(
-            onTap: onSelect,
+            onTap: widget.onSelect,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 120),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -830,7 +977,7 @@ class _StremioChannelRow extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          channel.name,
+                          widget.channel.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -839,15 +986,51 @@ class _StremioChannelRow extends StatelessWidget {
                             fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                           ),
                         ),
-                        Text(
-                          channel.addonName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 12,
+                        if (_loading)
+                          const SizedBox(
+                            height: 14,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textDim),
+                              ),
+                            ),
+                          )
+                        else ...[
+                          Text(
+                            widget.channel.addonName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
                           ),
-                        ),
+                          if (_now != null)
+                            Text(
+                              _now!.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          if (prog != null) ...[
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: prog,
+                                minHeight: 3,
+                                backgroundColor: Colors.white.withValues(alpha: 0.12),
+                                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purpleLight),
+                              ),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
                   ),
@@ -867,13 +1050,32 @@ class _StremioChannelRow extends StatelessWidget {
   }
 }
 
+class _StremioPanelData {
+  final Map<String, dynamic>? meta;
+  final Map<String, List<EpgProgramme>> epgMap;
+  final bool guideFromXmltv;
+
+  _StremioPanelData({
+    required this.meta,
+    required this.epgMap,
+    required this.guideFromXmltv,
+  });
+}
+
 class _StremioDetailPanel extends StatelessWidget {
   final StremioLiveChannel channel;
+  final SettingsService settings;
   final VoidCallback onWatch;
+  final VoidCallback onMappingChanged;
+  final Future<_StremioPanelData> Function(StremioLiveChannel c) loadPanel;
 
   const _StremioDetailPanel({
+    super.key,
     required this.channel,
+    required this.settings,
     required this.onWatch,
+    required this.onMappingChanged,
+    required this.loadPanel,
   });
 
   static String _fmtTime(DateTime t) {
@@ -885,21 +1087,23 @@ class _StremioDetailPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final logo = channel.poster;
-    final key = ValueKey('${channel.addonBaseUrl}|${channel.id}');
+    final mapKey = settings.stremioEpgMapping(channel.addonBaseUrl, channel.id) ?? '';
+    final key = ValueKey('${channel.addonBaseUrl}|${channel.id}|$mapKey');
 
-    return FutureBuilder<({Map<String, dynamic>? meta, Map<String, List<EpgProgramme>> epg})>(
+    return FutureBuilder<_StremioPanelData>(
       key: key,
-      future: StremioLiveTvService.instance.getMetaAndEpg(
-        addonBaseUrl: channel.addonBaseUrl,
-        channelId: channel.id,
-      ),
+      future: loadPanel(channel),
       builder: (context, snap) {
-        final epgMap = snap.data?.epg ?? {};
+        final data = snap.data;
+        final epgMap = data?.epgMap ?? {};
         final now = DateTime.now();
         final cur = LiveTvService.currentProgramme(epgMap, channel.id, now);
         final next = LiveTvService.nextProgramme(epgMap, channel.id, now);
-        final hasEpg = epgMap.isNotEmpty && epgMap[channel.id] != null && epgMap[channel.id]!.isNotEmpty;
-        final desc = (snap.data?.meta?['description'] ?? '') as String;
+        final list = epgMap[channel.id];
+        final hasEpg = list != null && list.isNotEmpty;
+        final desc = (data?.meta?['description'] ?? '') as String;
+        final prog = LiveTvService.programmeProgress(cur, now);
+        final mappedId = settings.stremioEpgMapping(channel.addonBaseUrl, channel.id);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 32, 32),
@@ -964,6 +1168,12 @@ class _StremioDetailPanel extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              const SizedBox(height: 8),
+              if (mappedId != null && mappedId.isNotEmpty)
+                Text(
+                  'EPG: linked to XMLTV id "$mappedId"${data?.guideFromXmltv == true ? '' : ' (no data)'}',
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12),
+                ),
               const SizedBox(height: 12),
               if (snap.connectionState == ConnectionState.waiting)
                 const Padding(
@@ -972,17 +1182,31 @@ class _StremioDetailPanel extends StatelessWidget {
                 )
               else if (!hasEpg)
                 Text(
-                  'No schedule in addon meta for this channel. The addon may only expose a live stream.',
+                  settings.epgUrl.isEmpty
+                      ? 'Add an XMLTV URL in Remote Settings to link this channel to a guide, or rely on the addon meta if it includes a schedule.'
+                      : 'No guide for this channel. Use "Link EPG channel" to pick a row from your XMLTV file.',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.45),
                 )
               else ...[
-                if (cur != null)
+                if (cur != null) ...[
                   _GuideBlock(
                     label: 'Now',
                     title: cur.title,
                     timeRange: '${_fmtTime(cur.start)} – ${_fmtTime(cur.end)}',
-                  )
-                else
+                  ),
+                  if (prog != null) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: prog,
+                        minHeight: 6,
+                        backgroundColor: Colors.white.withValues(alpha: 0.1),
+                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purpleLight),
+                      ),
+                    ),
+                  ],
+                ] else
                   Text(
                     'No programme listed for now.',
                     style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
@@ -996,7 +1220,48 @@ class _StremioDetailPanel extends StatelessWidget {
                   ),
                 ],
               ],
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              if (settings.epgUrl.isNotEmpty)
+                DpadFocusable(
+                  region: 'live_detail',
+                  onSelect: () => _openEpgPicker(context),
+                  builder: (context, focused, _) {
+                    return GestureDetector(
+                      onTap: () => _openEpgPicker(context),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: focused
+                              ? AppColors.darkPurple.withValues(alpha: 0.8)
+                              : AppColors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: focused ? AppColors.purpleLight : Colors.transparent,
+                            width: 2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.link, color: Colors.white70, size: 22),
+                            SizedBox(width: 8),
+                            Text(
+                              'Link EPG channel',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  child: const SizedBox.shrink(),
+                ),
+              const SizedBox(height: 16),
               DpadFocusable(
                 region: 'live_detail',
                 onSelect: onWatch,
@@ -1042,6 +1307,104 @@ class _StremioDetailPanel extends StatelessWidget {
       },
     );
   }
+
+  Future<void> _openEpgPicker(BuildContext context) async {
+    final url = settings.epgUrl.trim();
+    if (url.isEmpty) return;
+    try {
+      await LiveTvService.instance.loadEpg(url);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load EPG: $e')),
+        );
+      }
+      return;
+    }
+    final channels = LiveTvService.instance.cachedEpgChannelList;
+    if (!context.mounted) return;
+    if (channels.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No <channel> entries found in XMLTV')),
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Pick XMLTV channel', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 480,
+            height: 360,
+            child: ListView.builder(
+              itemCount: channels.length + 1,
+              itemBuilder: (_, i) {
+                if (i == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: DpadFocusable(
+                      onSelect: () {
+                        settings.setStremioEpgMapping(channel.addonBaseUrl, channel.id, null);
+                        onMappingChanged();
+                        Navigator.pop(ctx);
+                      },
+                      builder: (context, f, _) {
+                        return ListTile(
+                          tileColor: f ? AppColors.darkPurple : null,
+                          title: const Text('Clear link', style: TextStyle(color: Colors.redAccent)),
+                          subtitle: Text(
+                            'Use addon meta schedule only',
+                            style: TextStyle(color: AppColors.textDim, fontSize: 12),
+                          ),
+                          onTap: () {
+                            settings.setStremioEpgMapping(channel.addonBaseUrl, channel.id, null);
+                            onMappingChanged();
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      },
+                      child: const SizedBox.shrink(),
+                    ),
+                  );
+                }
+                final ch = channels[i - 1];
+                return DpadFocusable(
+                  onSelect: () {
+                    settings.setStremioEpgMapping(channel.addonBaseUrl, channel.id, ch.id);
+                    onMappingChanged();
+                    Navigator.pop(ctx);
+                  },
+                  builder: (context, f, _) {
+                    return ListTile(
+                      tileColor: f ? AppColors.darkPurple : null,
+                      title: Text(
+                        ch.displayName,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        'id: ${ch.id}',
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12),
+                      ),
+                      onTap: () {
+                        settings.setStremioEpgMapping(channel.addonBaseUrl, channel.id, ch.id);
+                        onMappingChanged();
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                  child: const SizedBox.shrink(),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ChannelDetailPanel extends StatelessWidget {
@@ -1049,12 +1412,18 @@ class _ChannelDetailPanel extends StatelessWidget {
   final EpgProgramme? nowPlaying;
   final EpgProgramme? nextPlaying;
   final bool hasEpg;
+  final double? nowProgress;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
 
   const _ChannelDetailPanel({
     required this.channel,
     required this.nowPlaying,
     required this.nextPlaying,
     required this.hasEpg,
+    this.nowProgress,
+    required this.isFavorite,
+    required this.onToggleFavorite,
   });
 
   static String _fmtTime(DateTime t) {
@@ -1131,14 +1500,26 @@ class _ChannelDetailPanel extends StatelessWidget {
               style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.45),
             )
           else ...[
-            if (nowPlaying != null)
+            if (nowPlaying != null) ...[
               _GuideBlock(
                 label: 'Now',
                 title: nowPlaying!.title,
                 timeRange:
                     '${_fmtTime(nowPlaying!.start)} – ${_fmtTime(nowPlaying!.end)}',
-              )
-            else
+              ),
+              if (nowProgress != null) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: nowProgress,
+                    minHeight: 6,
+                    backgroundColor: Colors.white.withValues(alpha: 0.1),
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.purpleLight),
+                  ),
+                ),
+              ],
+            ] else
               Text(
                 'No programme listed for now.',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
@@ -1154,56 +1535,104 @@ class _ChannelDetailPanel extends StatelessWidget {
             ],
           ],
           const SizedBox(height: 32),
-          DpadFocusable(
-            region: 'live_detail',
-            onSelect: () {
-              Navigator.pushNamed(context, '/player', arguments: {
-                'magnet': channel.streamUrl,
-                'title': channel.name,
-                'mediaType': 'movie',
-              });
-            },
-            builder: (context, focused, _) {
-              return GestureDetector(
-                onTap: () {
+          Row(
+            children: [
+              DpadFocusable(
+                region: 'live_detail',
+                onSelect: onToggleFavorite,
+                builder: (context, focused, _) {
+                  return GestureDetector(
+                    onTap: onToggleFavorite,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: focused
+                            ? AppColors.darkPurple.withValues(alpha: 0.8)
+                            : AppColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: focused ? AppColors.purpleLight : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                            color: isFavorite ? Colors.amber : Colors.white70,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isFavorite ? 'Favorited' : 'Add favorite',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                child: const SizedBox.shrink(),
+              ),
+              const SizedBox(width: 12),
+              DpadFocusable(
+                region: 'live_detail',
+                onSelect: () {
                   Navigator.pushNamed(context, '/player', arguments: {
                     'magnet': channel.streamUrl,
                     'title': channel.name,
                     'mediaType': 'movie',
                   });
                 },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: focused
-                        ? AppColors.purple.withValues(alpha: 0.35)
-                        : AppColors.darkPurple,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: focused ? AppColors.purpleLight : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
-                      SizedBox(width: 8),
-                      Text(
-                        'Watch channel',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                builder: (context, focused, _) {
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pushNamed(context, '/player', arguments: {
+                        'magnet': channel.streamUrl,
+                        'title': channel.name,
+                        'mediaType': 'movie',
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: focused
+                            ? AppColors.purple.withValues(alpha: 0.35)
+                            : AppColors.darkPurple,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: focused ? AppColors.purpleLight : Colors.transparent,
+                          width: 2,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
-            child: const SizedBox.shrink(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
+                          SizedBox(width: 8),
+                          Text(
+                            'Watch channel',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                child: const SizedBox.shrink(),
+              ),
+            ],
           ),
         ],
       ),
