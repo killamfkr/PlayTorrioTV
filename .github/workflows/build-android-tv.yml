@@ -47,13 +47,15 @@ jobs:
             "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           unzip -q /tmp/cmdline.zip -d "$SDK/cmdline-tools"
           mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          chmod +x "$SM" || true
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          # Must succeed — do not hide failures with || true
-          yes | sdkmanager --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-          yes | sdkmanager --sdk_root="$SDK" --licenses
+          # GITHUB_PATH is not active in this step — call sdkmanager by full path
+          yes | "$SM" --sdk_root="$SDK" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | "$SM" --sdk_root="$SDK" --licenses
 
       # GITHUB_PATH only affects *later* steps — do not call flutter in this step.
       - name: Install Flutter (stable)
