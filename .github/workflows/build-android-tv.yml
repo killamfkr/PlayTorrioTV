@@ -54,9 +54,23 @@ jobs:
         env:
           GRADLE_OPTS: -Xmx4g
 
+      # Output path varies (flutter-apk vs apk/release). Collect every release APK.
+      - name: Collect APKs for artifact
+        run: |
+          set -e
+          mkdir -p artifact_apk
+          find build/app/outputs -type f -name '*.apk' -print
+          find build/app/outputs -type f -name '*.apk' -exec cp -f {} artifact_apk/ \;
+          ls -la artifact_apk/
+          count=$(find artifact_apk -maxdepth 1 -name '*.apk' | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No APK files found under build/app/outputs"
+            exit 1
+          fi
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: playtorrio-android-tv-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: artifact_apk/*.apk
           if-no-files-found: error
