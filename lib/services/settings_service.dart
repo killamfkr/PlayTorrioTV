@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'live_tv_service.dart';
 import 'stremio_addon_service.dart';
 
 class SettingsService extends ChangeNotifier {
@@ -41,6 +42,14 @@ class SettingsService extends ChangeNotifier {
   List<Map<String, dynamic>> _stremioAddonsRich = [];
   List<Map<String, dynamic>> get stremioAddonsRich => List.unmodifiable(_stremioAddonsRich);
 
+  /// M3U playlist URL for Live TV (IPTV). Configured from the phone settings page.
+  String _iptvM3uUrl = '';
+  String get iptvM3uUrl => _iptvM3uUrl;
+
+  /// XMLTV EPG URL (optional). Paired with the M3U `tvg-id` attributes.
+  String _epgUrl = '';
+  String get epgUrl => _epgUrl;
+
   /// Notifier for addon changes (catalogs, home screen, etc.)
   static final ValueNotifier<int> addonChangeNotifier = ValueNotifier<int>(0);
 
@@ -70,6 +79,8 @@ class SettingsService extends ChangeNotifier {
       _subtitleFontsize = _oldToNew[_subtitleFontsize]!;
       _prefs.setInt('subtitle_fontsize', _subtitleFontsize);
     }
+    _iptvM3uUrl = _prefs.getString('iptv_m3u_url') ?? '';
+    _epgUrl = _prefs.getString('epg_url') ?? '';
     _stremioAddons = _prefs.getStringList('stremio_addons') ?? [];
     // Also keep a JSON copy for native Kotlin to read
     _prefs.setString('stremio_addons_json', jsonEncode(_stremioAddons));
@@ -160,6 +171,22 @@ class SettingsService extends ChangeNotifier {
   void setSubtitleFontsize(int value) {
     _subtitleFontsize = value;
     _prefs.setInt('subtitle_fontsize', value);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  void setIptvM3uUrl(String value) {
+    _iptvM3uUrl = value.trim();
+    _prefs.setString('iptv_m3u_url', _iptvM3uUrl);
+    LiveTvService.instance.clearCache();
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  void setEpgUrl(String value) {
+    _epgUrl = value.trim();
+    _prefs.setString('epg_url', _epgUrl);
+    LiveTvService.instance.clearCache();
     notifyListeners();
     _broadcastSettings();
   }
@@ -259,6 +286,8 @@ class SettingsService extends ChangeNotifier {
         'cache_size_mb': _cacheSizeMB,
         'subtitle_fontsize': _subtitleFontsize,
         'stremio_addons': _stremioAddons,
+        'iptv_m3u_url': _iptvM3uUrl,
+        'epg_url': _epgUrl,
       };
 
   /// Persist every profile-scoped setting into a single JSON blob keyed by
@@ -295,7 +324,16 @@ class SettingsService extends ChangeNotifier {
               .toList();
           _prefs.setStringList('stremio_addons_rich', richList);
         }
+        if (!json.containsKey('iptv_m3u_url')) {
+          _iptvM3uUrl = '';
+          _prefs.setString('iptv_m3u_url', '');
+        }
+        if (!json.containsKey('epg_url')) {
+          _epgUrl = '';
+          _prefs.setString('epg_url', '');
+        }
         _syncSubtitleAddonUrls();
+        LiveTvService.instance.clearCache();
         notifyListeners();
       } catch (_) {
         _resetToDefaults();
@@ -316,6 +354,8 @@ class SettingsService extends ChangeNotifier {
     _subtitleFontsize = 0;
     _stremioAddons = [];
     _stremioAddonsRich = [];
+    _iptvM3uUrl = '';
+    _epgUrl = '';
     _prefs.setBool('streaming_mode', false);
     _prefs.setBool('use_debrid', false);
     _prefs.setString('debrid_provider', 'real-debrid');
@@ -327,6 +367,10 @@ class SettingsService extends ChangeNotifier {
     _prefs.setString('stremio_addons_json', '[]');
     _prefs.setStringList('stremio_addons_rich', []);
     _prefs.setString('stremio_subtitle_addons_json', '[]');
+    _iptvM3uUrl = '';
+    _epgUrl = '';
+    _prefs.setString('iptv_m3u_url', '');
+    _prefs.setString('epg_url', '');
     notifyListeners();
   }
 
@@ -378,6 +422,16 @@ class SettingsService extends ChangeNotifier {
       // Fetch manifests for newly added URLs
       unawaited(_syncRichAddons());
     }
+    if (json.containsKey('iptv_m3u_url')) {
+      _iptvM3uUrl = (json['iptv_m3u_url'] as String? ?? '').trim();
+      _prefs.setString('iptv_m3u_url', _iptvM3uUrl);
+      LiveTvService.instance.clearCache();
+    }
+    if (json.containsKey('epg_url')) {
+      _epgUrl = (json['epg_url'] as String? ?? '').trim();
+      _prefs.setString('epg_url', _epgUrl);
+      LiveTvService.instance.clearCache();
+    }
     notifyListeners();
   }
 
@@ -404,7 +458,8 @@ class SettingsService extends ChangeNotifier {
     try {
       final socket = await Socket.connect('8.8.8.8', 53,
           timeout: const Duration(seconds: 2));
-      final localAddr = socket.address.address;
+      // `Socket.address` is the *remote* peer — use `localAddress` for LAN IP.
+      final localAddr = socket.localAddress.address;
       socket.destroy();
       if (localAddr != '0.0.0.0' && localAddr != '127.0.0.1') {
         _localIp = localAddr;
@@ -830,6 +885,24 @@ class SettingsService extends ChangeNotifier {
     </select>
   </div>
 
+  <div class="section-title">Live TV (IPTV)</div>
+
+  <div class="card">
+    <div class="setting-info">
+      <h3>M3U playlist URL</h3>
+      <p>HTTP(S) link to your IPTV M3U playlist. Channels appear under Live TV on the TV app.</p>
+    </div>
+    <input type="text" class="text-input" id="iptvM3uUrl" placeholder="https://example.com/playlist.m3u" autocomplete="off">
+  </div>
+
+  <div class="card">
+    <div class="setting-info">
+      <h3>EPG (XMLTV) URL</h3>
+      <p>Optional guide data (XMLTV). Must match <code style="color:var(--purple-light)">tvg-id</code> in your M3U.</p>
+    </div>
+    <input type="text" class="text-input" id="epgUrl" placeholder="https://example.com/epg.xml" autocomplete="off">
+  </div>
+
   <div class="section-title">Stremio Addons</div>
 
   <div class="card">
@@ -933,6 +1006,8 @@ class SettingsService extends ChangeNotifier {
           document.getElementById('tbApiKey').value = msg.data.tb_api_key || '';
           document.getElementById('cacheSizeMB').value = msg.data.cache_size_mb || 512;
           document.getElementById('subtitleFontsize').value = msg.data.subtitle_fontsize || 0;
+          document.getElementById('iptvM3uUrl').value = msg.data.iptv_m3u_url || '';
+          document.getElementById('epgUrl').value = msg.data.epg_url || '';
           currentAddons = msg.data.stremio_addons || [];
           renderAddons();
           updateDebridUI();
@@ -960,6 +1035,16 @@ class SettingsService extends ChangeNotifier {
 
     document.getElementById('subtitleFontsize').addEventListener('change', (e) => {
       sendUpdate({ subtitle_fontsize: parseInt(e.target.value) });
+    });
+
+    let iptvTimer, epgTimer;
+    document.getElementById('iptvM3uUrl').addEventListener('input', (e) => {
+      clearTimeout(iptvTimer);
+      iptvTimer = setTimeout(() => sendUpdate({ iptv_m3u_url: e.target.value }), 500);
+    });
+    document.getElementById('epgUrl').addEventListener('input', (e) => {
+      clearTimeout(epgTimer);
+      epgTimer = setTimeout(() => sendUpdate({ epg_url: e.target.value }), 500);
     });
 
     let rdTimer, tbTimer;
@@ -996,6 +1081,8 @@ class SettingsService extends ChangeNotifier {
         tb_api_key: document.getElementById('tbApiKey').value,
         cache_size_mb: parseInt(document.getElementById('cacheSizeMB').value),
         subtitle_fontsize: parseInt(document.getElementById('subtitleFontsize').value),
+        iptv_m3u_url: document.getElementById('iptvM3uUrl').value,
+        epg_url: document.getElementById('epgUrl').value,
         stremio_addons: currentAddons
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
