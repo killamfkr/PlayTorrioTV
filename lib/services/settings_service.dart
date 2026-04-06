@@ -482,41 +482,79 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  static bool _jsonToBool(dynamic v) {
+    if (v == null) {
+      return false;
+    }
+    if (v is bool) {
+      return v;
+    }
+    if (v is num) {
+      return v != 0;
+    }
+    final s = v.toString().toLowerCase().trim();
+    return s == 'true' || s == '1' || s == 'yes';
+  }
+
+  static int _jsonToInt(dynamic v, [int fallback = 0]) {
+    if (v == null) {
+      return fallback;
+    }
+    if (v is int) {
+      return v;
+    }
+    if (v is num) {
+      return v.round();
+    }
+    return int.tryParse(v.toString().trim()) ?? fallback;
+  }
+
+  static String _jsonToString(dynamic v) {
+    if (v == null) {
+      return '';
+    }
+    return v.toString();
+  }
+
   void _applyJson(Map<String, dynamic> json) {
     if (json.containsKey('streaming_mode')) {
-      _streamingMode = json['streaming_mode'] as bool;
+      _streamingMode = _jsonToBool(json['streaming_mode']);
       _prefs.setBool('streaming_mode', _streamingMode);
     }
     if (json.containsKey('use_debrid')) {
-      _useDebrid = json['use_debrid'] as bool;
+      _useDebrid = _jsonToBool(json['use_debrid']);
       _prefs.setBool('use_debrid', _useDebrid);
     }
     if (json.containsKey('debrid_provider')) {
-      _debridProvider = json['debrid_provider'] as String;
+      _debridProvider = _jsonToString(json['debrid_provider']);
       _prefs.setString('debrid_provider', _debridProvider);
     }
     if (json.containsKey('rd_api_key')) {
-      _realDebridApiKey = json['rd_api_key'] as String;
+      _realDebridApiKey = _jsonToString(json['rd_api_key']);
       _prefs.setString('rd_api_key', _realDebridApiKey);
     }
     if (json.containsKey('tb_api_key')) {
-      _torboxApiKey = json['tb_api_key'] as String;
+      _torboxApiKey = _jsonToString(json['tb_api_key']);
       _prefs.setString('tb_api_key', _torboxApiKey);
     }
     if (json.containsKey('cache_size_mb')) {
-      _cacheSizeMB = json['cache_size_mb'] as int;
+      _cacheSizeMB = _jsonToInt(json['cache_size_mb'], _cacheSizeMB);
       _prefs.setInt('cache_size_mb', _cacheSizeMB);
     }
     if (json.containsKey('subtitle_fontsize')) {
-      var size = json['subtitle_fontsize'] as int;
+      var size = _jsonToInt(json['subtitle_fontsize'], _subtitleFontsize);
       // Migrate old absolute pixel values to new relative divisor values
       const oldToNew = {28: 14, 36: 10, 48: 7};
-      if (oldToNew.containsKey(size)) size = oldToNew[size]!;
+      if (oldToNew.containsKey(size)) {
+        size = oldToNew[size]!;
+      }
       _subtitleFontsize = size;
       _prefs.setInt('subtitle_fontsize', _subtitleFontsize);
     }
     if (json.containsKey('stremio_addons')) {
-      _stremioAddons = (json['stremio_addons'] as List).cast<String>();
+      final raw = json['stremio_addons'];
+      _stremioAddons =
+          (raw is List ? raw : <dynamic>[]).map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
       _prefs.setStringList('stremio_addons', _stremioAddons);
       _prefs.setString('stremio_addons_json', jsonEncode(_stremioAddons));
       // Remove rich entries for addons no longer in the plain list
@@ -530,22 +568,39 @@ class SettingsService extends ChangeNotifier {
       // Fetch manifests for newly added URLs
       unawaited(_syncRichAddons());
     }
+    if (json.containsKey('stremio_addons_rich')) {
+      final richRaw = json['stremio_addons_rich'];
+      if (richRaw is List) {
+        _stremioAddonsRich = richRaw
+            .map((s) {
+              try {
+                return jsonDecode(s.toString()) as Map<String, dynamic>;
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<Map<String, dynamic>>()
+            .toList();
+        _prefs.setStringList(
+            'stremio_addons_rich', _stremioAddonsRich.map((e) => jsonEncode(e)).toList());
+      }
+    }
     if (json.containsKey('iptv_m3u_url')) {
-      _iptvM3uUrl = (json['iptv_m3u_url'] as String? ?? '').trim();
+      _iptvM3uUrl = _jsonToString(json['iptv_m3u_url']).trim();
       _prefs.setString('iptv_m3u_url', _iptvM3uUrl);
       LiveTvService.instance.clearCache();
     }
     if (json.containsKey('epg_url')) {
-      _epgUrl = (json['epg_url'] as String? ?? '').trim();
+      _epgUrl = _jsonToString(json['epg_url']).trim();
       _prefs.setString('epg_url', _epgUrl);
       LiveTvService.instance.clearCache();
     }
     if (json.containsKey('stremio_epg_auto_match')) {
-      _stremioEpgAutoMatch = json['stremio_epg_auto_match'] as bool;
+      _stremioEpgAutoMatch = _jsonToBool(json['stremio_epg_auto_match']);
       _prefs.setBool('stremio_epg_auto_match', _stremioEpgAutoMatch);
     }
     if (json.containsKey('stremio_auto_pick_streams')) {
-      _stremioAutoPickStreams = json['stremio_auto_pick_streams'] as bool;
+      _stremioAutoPickStreams = _jsonToBool(json['stremio_auto_pick_streams']);
       _prefs.setBool('stremio_auto_pick_streams', _stremioAutoPickStreams);
     }
     if (json.containsKey('live_tv_stremio_epg_map')) {
@@ -562,9 +617,11 @@ class SettingsService extends ChangeNotifier {
       StremioLiveTvService.instance.clearCache();
     }
     if (json.containsKey('iptv_favorite_stream_urls')) {
-      _iptvFavoriteStreamUrls =
-          (json['iptv_favorite_stream_urls'] as List).map((e) => e.toString()).toList();
-      _prefs.setStringList('iptv_favorite_stream_urls', _iptvFavoriteStreamUrls);
+      final fav = json['iptv_favorite_stream_urls'];
+      if (fav is List) {
+        _iptvFavoriteStreamUrls = fav.map((e) => e.toString()).toList();
+        _prefs.setStringList('iptv_favorite_stream_urls', _iptvFavoriteStreamUrls);
+      }
     }
     notifyListeners();
   }
@@ -705,11 +762,25 @@ class SettingsService extends ChangeNotifier {
         try {
           final msg = jsonDecode(data as String) as Map<String, dynamic>;
           if (msg['type'] == 'update') {
-            _applyJson(msg['data'] as Map<String, dynamic>);
-            // Echo to all other clients
-            _broadcastSettings();
+            final patch = msg['data'];
+            if (patch is Map<String, dynamic>) {
+              try {
+                _applyJson(patch);
+                _broadcastSettings();
+              } catch (e, st) {
+                debugPrint('[SettingsServer] import/applyJson failed: $e\n$st');
+                try {
+                  ws.add(jsonEncode({
+                    'type': 'error',
+                    'message': 'Settings update failed. Check JSON types (use true/false, numbers without quotes).',
+                  }));
+                } catch (_) {}
+              }
+            }
           }
-        } catch (_) {}
+        } catch (e, st) {
+          debugPrint('[SettingsServer] WebSocket message error: $e\n$st');
+        }
       },
       onDone: () => _wsClients.remove(ws),
       onError: (_) => _wsClients.remove(ws),
@@ -1175,6 +1246,10 @@ class SettingsService extends ChangeNotifier {
 
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
+        if (msg.type === 'error') {
+          alert(msg.message || 'Settings error');
+          return;
+        }
         if (msg.type === 'settings') {
           document.getElementById('streamingMode').checked = msg.data.streaming_mode;
           document.getElementById('useDebrid').checked = msg.data.use_debrid;
@@ -1296,9 +1371,33 @@ class SettingsService extends ChangeNotifier {
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
-          const data = JSON.parse(ev.target.result);
+          const raw = JSON.parse(ev.target.result);
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+            alert('JSON must be an object (exported settings file)');
+            return;
+          }
+          const keys = [
+            'streaming_mode', 'use_debrid', 'debrid_provider', 'rd_api_key', 'tb_api_key',
+            'cache_size_mb', 'subtitle_fontsize', 'iptv_m3u_url', 'epg_url',
+            'stremio_epg_auto_match', 'stremio_auto_pick_streams', 'stremio_addons',
+            'live_tv_stremio_epg_map', 'iptv_favorite_stream_urls', 'stremio_addons_rich'
+          ];
+          const data = {};
+          for (const k of keys) {
+            if (Object.prototype.hasOwnProperty.call(raw, k)) data[k] = raw[k];
+          }
+          if (Object.keys(data).length === 0) {
+            alert('No known settings keys in file. Export from this page and edit that JSON.');
+            return;
+          }
+          if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert('Not connected to TV. Wait for Connected, then try again.');
+            return;
+          }
           sendUpdate(data);
           if (data.stremio_addons) { currentAddons = data.stremio_addons; renderAddons(); }
+          if (data.live_tv_stremio_epg_map) liveTvStremioEpgMap = data.live_tv_stremio_epg_map;
+          if (data.iptv_favorite_stream_urls) iptvFavoriteUrls = data.iptv_favorite_stream_urls;
         } catch (err) {
           alert('Invalid JSON file');
         }
