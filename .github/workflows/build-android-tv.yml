@@ -96,23 +96,21 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Build release APKs (split per ABI)
-        run: flutter build apk --release --split-per-abi
+      # Universal APK (all ABIs) — matches pre-split behavior; some TV sideloaders
+      # mishandle split APKs or the wrong ABI file.
+      - name: Build release APK (universal)
+        run: flutter build apk --release
         env:
           GRADLE_OPTS: -Xmx4g
 
-      - name: Collect APKs
+      - name: Collect APK
         run: |
           set -euo pipefail
           mkdir -p artifact_apk
-          find build/app/outputs -type f -name '*.apk' -print
-          find build/app/outputs -type f -name '*.apk' -exec cp -f {} artifact_apk/ \;
+          U="build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$U" || { echo "::error::Missing $U"; exit 1; }
+          cp -f "$U" artifact_apk/
           ls -la artifact_apk/
-          n=$(find artifact_apk -maxdepth 1 -name '*.apk' | wc -l)
-          if [ "$n" -eq 0 ]; then
-            echo "::error::No APK files found under build/app/outputs"
-            exit 1
-          fi
 
       - name: Create draft GitHub Release with APK
         # Was only push/workflow_dispatch — PR runs skipped this step (crossed out in UI).
@@ -139,7 +137,7 @@ jobs:
             --title "PlayTorrio TV Android — $TITLE_REF (draft, run ${{ github.run_id }})" \
             --notes "Automated draft (**$EVENT**) from \`${{ github.sha }}\`.
 
-          **APKs:** \`app-armeabi-v7a-release.apk\` (older 32-bit Fire TV sticks), \`app-arm64-v8a-release.apk\` (most current devices), \`app-x86_64-release.apk\` (emulators). Install with \`adb install\`.
+          Single **universal** APK (\`app-release.apk\`) with all CPU ABIs — same style as before split builds. For smaller per-device APKs locally: \`flutter build apk --release --split-per-abi\`.
 
           Tag: \`$TAG\`" \
             ./*.apk
