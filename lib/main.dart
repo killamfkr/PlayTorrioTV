@@ -21,11 +21,13 @@ import 'services/continue_watching_service.dart';
 import 'services/player_launcher.dart';
 import 'services/local_proxy_service.dart';
 import 'services/profile_service.dart';
+import 'services/app_navigation_bridge.dart';
 import 'screens/profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  AppNavigationBridge.init();
   await ProfileService.instance.init();
   await SettingsService.instance.init();
   await ContinueWatchingService.load();
@@ -210,6 +212,7 @@ class PlayTorrioApp extends StatelessWidget {
         ],
       ),
       child: MaterialApp(
+        navigatorKey: AppNavigationBridge.navigatorKey,
         title: 'PlayTorrio TV',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
@@ -231,6 +234,7 @@ class PlayTorrioApp extends StatelessWidget {
                 id: args['id'] as int,
                 mediaType: args['media_type'] as String,
                 stremioItem: args['stremio_item'] as Map<String, dynamic>?,
+                autoPlayEpisode: args['auto_play_episode'] as Map<String, dynamic>?,
               ),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return FadeTransition(opacity: animation, child: child);
@@ -254,6 +258,7 @@ class PlayTorrioApp extends StatelessWidget {
                 fileIdx: args['fileIdx'] as int?,
                 resumePositionMs: args['resumePositionMs'] as int?,
                 logoUrl: args['logoUrl'] as String?,
+                nextEpisodePayload: args['nextEpisodePayload'] as String?,
               ),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return FadeTransition(opacity: animation, child: child);

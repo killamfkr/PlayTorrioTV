@@ -257,6 +257,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: (v) => _settings.setAutoPlayStremioAddon(v),
                   ),
                   const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Next episode when one ends',
+                    subtitle:
+                        'After an episode, show Play next with countdown (native player, TMDB shows)',
+                    value: _settings.nextEpisodeAutoEnabled,
+                    onChanged: (v) => _settings.setNextEpisodeAutoEnabled(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Next episode countdown',
+                    subtitle: 'Seconds before the next episode starts (0 = button only)',
+                    value: _settings.nextEpisodeCountdownSec.toString(),
+                    options: const {
+                      '0': 'Off (tap Play now)',
+                      '10': '10 seconds',
+                      '15': '15 seconds',
+                      '20': '20 seconds',
+                      '30': '30 seconds',
+                    },
+                    onChanged: (v) => _settings.setNextEpisodeCountdownSec(int.parse(v)),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Skip intro',
+                    subtitle: 'Jump this many seconds from the start (0 = hide button)',
+                    value: _settings.skipIntroSeconds.toString(),
+                    options: const {
+                      '0': 'Off',
+                      '60': '1 min',
+                      '90': '1.5 min',
+                      '120': '2 min',
+                      '180': '3 min',
+                    },
+                    onChanged: (v) => _settings.setSkipIntroSeconds(int.parse(v)),
+                  ),
+                  const SizedBox(height: 8),
                   _SettingInfo(
                     title: 'Subtitle Addons',
                     subtitle: _settings.stremioAddons.isEmpty

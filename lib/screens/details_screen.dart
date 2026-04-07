@@ -9,6 +9,7 @@ import '../services/source_service.dart';
 import '../services/stream_service.dart' show EpisodeTarget, StreamService;
 import '../services/settings_service.dart';
 import '../services/player_launcher.dart';
+import '../services/player_session_extras.dart';
 import '../services/stremio_addon_service.dart';
 import '../main.dart';
 
@@ -113,8 +114,16 @@ class DetailsScreen extends StatefulWidget {
   final String mediaType;
   /// Optional Stremio meta item for custom (non-IMDB) addon content.
   final Map<String, dynamic>? stremioItem;
+  /// From native player "next episode" — auto-start this TMDB episode when loaded.
+  final Map<String, dynamic>? autoPlayEpisode;
 
-  const DetailsScreen({super.key, required this.id, required this.mediaType, this.stremioItem});
+  const DetailsScreen({
+    super.key,
+    required this.id,
+    required this.mediaType,
+    this.stremioItem,
+    this.autoPlayEpisode,
+  });
 
   @override
   State<DetailsScreen> createState() => _DetailsScreenState();
@@ -147,11 +156,32 @@ class _DetailsScreenState extends State<DetailsScreen> {
   int _cachedUnifiedHash = 0;
 
   bool _movieAutoPlayDone = false;
+  bool _nativeNextEpisodeAutoPlayDone = false;
 
   @override
   void initState() {
     super.initState();
     _loadDetails();
+  }
+
+  /// After native player "next episode" — season already loaded in [_loadDetails].
+  Future<void> _runNativeNextEpisodeAutoPlay(Map<String, dynamic> map) async {
+    if (_nativeNextEpisodeAutoPlayDone || widget.mediaType != 'tv') {
+      return;
+    }
+    _nativeNextEpisodeAutoPlayDone = true;
+    final epNum = map['episode'] as int? ?? 1;
+    Map<String, dynamic>? ep;
+    for (final e in _episodes) {
+      final m = e as Map<String, dynamic>;
+      if ((m['episode_number'] as int?) == epNum) {
+        ep = m;
+        break;
+      }
+    }
+    if (ep != null) {
+      await _showEpisodeSources(ep);
+    }
   }
 
   void _focusDownFromCurrent() {
@@ -243,12 +273,26 @@ class _DetailsScreenState extends State<DetailsScreen> {
         if (widget.mediaType == 'tv' && details['seasons'] != null) {
           final seasons = details['seasons'] as List;
           if (seasons.isNotEmpty) {
-            final firstReal = seasons.firstWhere(
-              (s) => (s['season_number'] as int) > 0,
-              orElse: () => seasons.first,
-            );
-            _selectedSeason = firstReal['season_number'] as int;
-            _loadSeason(_selectedSeason);
+            final ap = widget.autoPlayEpisode;
+            if (ap != null) {
+              final s = ap['season'] as int? ?? 1;
+              _selectedSeason = s;
+              await _loadSeason(s);
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    _runNativeNextEpisodeAutoPlay(Map<String, dynamic>.from(ap));
+                  }
+                });
+              }
+            } else {
+              final firstReal = seasons.firstWhere(
+                (s) => (s['season_number'] as int) > 0,
+                orElse: () => seasons.first,
+              );
+              _selectedSeason = firstReal['season_number'] as int;
+              _loadSeason(_selectedSeason);
+            }
           }
         }
       }
@@ -734,6 +778,19 @@ class _DetailsScreenState extends State<DetailsScreen> {
   }
 
   void _playSource(TorrentSource source, {EpisodeTarget? episode}) {
+    final nextPayload = episode != null && widget.mediaType == 'tv'
+        ? nextEpisodePayloadForPlayer(
+            tmdbId: widget.id,
+            mediaType: widget.mediaType,
+            season: episode.season,
+            episode: episode.episode,
+            showTitle: _title,
+            imdbId: _imdbId ?? '',
+            backdropPath: _backdropPath,
+            posterPath: (_details?['poster_path'] ?? '') as String,
+            logoUrl: _logoUrl ?? '',
+          )
+        : null;
     Navigator.of(context).pushNamed('/player', arguments: {
       'magnet': source.magnet,
       'title': _title,
@@ -744,6 +801,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
       'posterPath': (_details?['poster_path'] ?? '') as String,
       'mediaType': widget.mediaType,
       'logoUrl': _logoUrl ?? '',
+      'nextEpisodePayload': nextPayload,
     });
   }
 
@@ -755,6 +813,19 @@ class _DetailsScreenState extends State<DetailsScreen> {
     if (stream.isTorrent) {
       // Build magnet and play via torrent engine / debrid
       final magnet = stream.buildMagnet(StremioAddonService.appTrackers);
+      final nextPayload = episode != null && widget.mediaType == 'tv'
+          ? nextEpisodePayloadForPlayer(
+              tmdbId: widget.id,
+              mediaType: widget.mediaType,
+              season: episode.season,
+              episode: episode.episode,
+              showTitle: _title,
+              imdbId: _imdbId ?? '',
+              backdropPath: _backdropPath,
+              posterPath: (_details?['poster_path'] ?? '') as String,
+              logoUrl: _logoUrl ?? '',
+            )
+          : null;
       Navigator.of(context).pushNamed('/player', arguments: {
         'magnet': magnet,
         'title': _title,
@@ -766,9 +837,23 @@ class _DetailsScreenState extends State<DetailsScreen> {
         'mediaType': widget.mediaType,
         'fileIdx': stream.fileIdx,
         'logoUrl': _logoUrl ?? '',
+        'nextEpisodePayload': nextPayload,
       });
     } else if (stream.url != null) {
       // Direct URL — launch player with URL
+      final nextPayload = episode != null && widget.mediaType == 'tv'
+          ? nextEpisodePayloadForPlayer(
+              tmdbId: widget.id,
+              mediaType: widget.mediaType,
+              season: episode.season,
+              episode: episode.episode,
+              showTitle: _title,
+              imdbId: _imdbId ?? '',
+              backdropPath: _backdropPath,
+              posterPath: (_details?['poster_path'] ?? '') as String,
+              logoUrl: _logoUrl ?? '',
+            )
+          : null;
       PlayerLauncher.launch(
         stream.url!,
         title: _title,
@@ -781,11 +866,25 @@ class _DetailsScreenState extends State<DetailsScreen> {
         posterPath: (_details?['poster_path'] ?? '') as String,
         mediaType: widget.mediaType,
         logoUrl: _logoUrl ?? '',
+        nextEpisodePayload: nextPayload,
       );
     }
   }
 
   void _launchStreaming({int season = -1, int episode = -1}) {
+    final nextPayload = widget.mediaType == 'tv' && season > 0 && episode > 0
+        ? nextEpisodePayloadForPlayer(
+            tmdbId: widget.id,
+            mediaType: widget.mediaType,
+            season: season,
+            episode: episode,
+            showTitle: _title,
+            imdbId: _imdbId ?? '',
+            backdropPath: _backdropPath,
+            posterPath: (_details?['poster_path'] ?? '') as String,
+            logoUrl: _logoUrl ?? '',
+          )
+        : null;
     PlayerLauncher.launchStreaming(
       tmdbId: widget.id,
       imdbId: _imdbId ?? '',
@@ -796,6 +895,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
       season: season,
       episode: episode,
       logoUrl: _logoUrl ?? '',
+      nextEpisodePayload: nextPayload,
     );
   }
 
@@ -2300,6 +2400,17 @@ class _EpisodeSourcesDialogState extends State<_EpisodeSourcesDialog> {
     final epTarget = EpisodeTarget(season: widget.season, episode: widget.episode);
     if (stream.isTorrent) {
       final magnet = stream.buildMagnet(StremioAddonService.appTrackers);
+      final nextPayload = nextEpisodePayloadForPlayer(
+        tmdbId: widget.tmdbId,
+        mediaType: 'tv',
+        season: widget.season,
+        episode: widget.episode,
+        showTitle: widget.showName,
+        imdbId: widget.imdbId,
+        backdropPath: widget.backdropPath,
+        posterPath: widget.posterPath,
+        logoUrl: '',
+      );
       Navigator.of(context).pushNamed('/player', arguments: {
         'magnet': magnet,
         'title': '${widget.showName} S${widget.season.toString().padLeft(2, '0')}E${widget.episode.toString().padLeft(2, '0')}',
@@ -2310,8 +2421,20 @@ class _EpisodeSourcesDialogState extends State<_EpisodeSourcesDialog> {
         'posterPath': widget.posterPath,
         'mediaType': 'tv',
         'fileIdx': stream.fileIdx,
+        'nextEpisodePayload': nextPayload,
       });
     } else if (stream.url != null) {
+      final nextPayload = nextEpisodePayloadForPlayer(
+        tmdbId: widget.tmdbId,
+        mediaType: 'tv',
+        season: widget.season,
+        episode: widget.episode,
+        showTitle: widget.showName,
+        imdbId: widget.imdbId,
+        backdropPath: widget.backdropPath,
+        posterPath: widget.posterPath,
+        logoUrl: '',
+      );
       PlayerLauncher.launch(
         stream.url!,
         title: '${widget.showName} S${widget.season.toString().padLeft(2, '0')}E${widget.episode.toString().padLeft(2, '0')}',
@@ -2323,6 +2446,7 @@ class _EpisodeSourcesDialogState extends State<_EpisodeSourcesDialog> {
         backdropPath: widget.backdropPath,
         posterPath: widget.posterPath,
         mediaType: 'tv',
+        nextEpisodePayload: nextPayload,
       );
     }
   }

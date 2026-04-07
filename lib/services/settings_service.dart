@@ -96,6 +96,39 @@ class SettingsService extends ChangeNotifier {
     _broadcastSettings();
   }
 
+  /// Native player: show next-episode overlay when an episode ends.
+  bool _nextEpisodeAutoEnabled = true;
+  bool get nextEpisodeAutoEnabled => _nextEpisodeAutoEnabled;
+
+  void setNextEpisodeAutoEnabled(bool value) {
+    _nextEpisodeAutoEnabled = value;
+    _prefs.setBool('next_episode_auto_enabled', value);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  /// Seconds until next episode starts automatically (0 = button only, no countdown).
+  int _nextEpisodeCountdownSec = 15;
+  int get nextEpisodeCountdownSec => _nextEpisodeCountdownSec;
+
+  void setNextEpisodeCountdownSec(int value) {
+    _nextEpisodeCountdownSec = value.clamp(0, 120);
+    _prefs.setInt('next_episode_countdown_sec', _nextEpisodeCountdownSec);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  /// Skip intro: seek forward this many seconds from the start (0 = off).
+  int _skipIntroSeconds = 90;
+  int get skipIntroSeconds => _skipIntroSeconds;
+
+  void setSkipIntroSeconds(int value) {
+    _skipIntroSeconds = value.clamp(0, 600);
+    _prefs.setInt('skip_intro_seconds', _skipIntroSeconds);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
   /// Display names for installed stream addons (for auto-play default picker). Matches stream map keys.
   List<String> get stremioAddonAutoPlayChoices {
     final seen = <String>{};
@@ -206,6 +239,9 @@ class SettingsService extends ChangeNotifier {
     _epgUrl = _prefs.getString('epg_url') ?? '';
     _stremioEpgAutoMatch = _prefs.getBool('stremio_epg_auto_match') ?? false;
     _stremioAutoPickStreams = _prefs.getBool('stremio_auto_pick_streams') ?? false;
+    _nextEpisodeAutoEnabled = _prefs.getBool('next_episode_auto_enabled') ?? true;
+    _nextEpisodeCountdownSec = _prefs.getInt('next_episode_countdown_sec') ?? 15;
+    _skipIntroSeconds = _prefs.getInt('skip_intro_seconds') ?? 90;
     _autoPlaySource = _prefs.getString('auto_play_source') ?? 'playtorrio_first';
     if (_autoPlaySource != 'stremio_first' && _autoPlaySource != 'playtorrio_first') {
       _autoPlaySource = 'playtorrio_first';
@@ -433,6 +469,9 @@ class SettingsService extends ChangeNotifier {
         'auto_play_source': _autoPlaySource,
         'auto_play_stremio_addon': _autoPlayStremioAddon,
         'auto_play_stremio_addon_choices': stremioAddonAutoPlayChoices,
+        'next_episode_auto_enabled': _nextEpisodeAutoEnabled,
+        'next_episode_countdown_sec': _nextEpisodeCountdownSec,
+        'skip_intro_seconds': _skipIntroSeconds,
         'live_tv_stremio_epg_map': _stremioEpgMap,
         'iptv_favorite_stream_urls': _iptvFavoriteStreamUrls,
       };
@@ -495,6 +534,18 @@ class SettingsService extends ChangeNotifier {
           _autoPlayStremioAddon = '';
           _prefs.setString('auto_play_stremio_addon', '');
         }
+        if (!json.containsKey('next_episode_auto_enabled')) {
+          _nextEpisodeAutoEnabled = true;
+          _prefs.setBool('next_episode_auto_enabled', true);
+        }
+        if (!json.containsKey('next_episode_countdown_sec')) {
+          _nextEpisodeCountdownSec = 15;
+          _prefs.setInt('next_episode_countdown_sec', 15);
+        }
+        if (!json.containsKey('skip_intro_seconds')) {
+          _skipIntroSeconds = 90;
+          _prefs.setInt('skip_intro_seconds', 90);
+        }
         if (!json.containsKey('auto_play_source')) {
           _autoPlaySource = 'playtorrio_first';
           _prefs.setString('auto_play_source', _autoPlaySource);
@@ -556,6 +607,12 @@ class SettingsService extends ChangeNotifier {
     _prefs.setBool('stremio_auto_pick_streams', false);
     _prefs.setString('auto_play_source', 'playtorrio_first');
     _prefs.setString('auto_play_stremio_addon', '');
+    _nextEpisodeAutoEnabled = true;
+    _nextEpisodeCountdownSec = 15;
+    _skipIntroSeconds = 90;
+    _prefs.setBool('next_episode_auto_enabled', true);
+    _prefs.setInt('next_episode_countdown_sec', 15);
+    _prefs.setInt('skip_intro_seconds', 90);
     _prefs.setString('live_tv_stremio_epg_map', '{}');
     _prefs.setStringList('iptv_favorite_stream_urls', []);
     notifyListeners();
@@ -690,6 +747,18 @@ class SettingsService extends ChangeNotifier {
     if (json.containsKey('auto_play_stremio_addon')) {
       _autoPlayStremioAddon = _jsonToString(json['auto_play_stremio_addon']).trim();
       _prefs.setString('auto_play_stremio_addon', _autoPlayStremioAddon);
+    }
+    if (json.containsKey('next_episode_auto_enabled')) {
+      _nextEpisodeAutoEnabled = _jsonToBool(json['next_episode_auto_enabled']);
+      _prefs.setBool('next_episode_auto_enabled', _nextEpisodeAutoEnabled);
+    }
+    if (json.containsKey('next_episode_countdown_sec')) {
+      _nextEpisodeCountdownSec = _jsonToInt(json['next_episode_countdown_sec'], 15).clamp(0, 120);
+      _prefs.setInt('next_episode_countdown_sec', _nextEpisodeCountdownSec);
+    }
+    if (json.containsKey('skip_intro_seconds')) {
+      _skipIntroSeconds = _jsonToInt(json['skip_intro_seconds'], 90).clamp(0, 600);
+      _prefs.setInt('skip_intro_seconds', _skipIntroSeconds);
     }
     if (json.containsKey('live_tv_stremio_epg_map')) {
       final m = json['live_tv_stremio_epg_map'];
@@ -1256,6 +1325,47 @@ class SettingsService extends ChangeNotifier {
     <select id="autoPlayStremioAddon"></select>
   </div>
 
+  <div class="card">
+    <div class="setting-row">
+      <div class="setting-info">
+        <h3>Next episode when one ends</h3>
+        <p>TMDB TV: after an episode, countdown then play the next (native player)</p>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="nextEpisodeAuto">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="setting-info">
+      <h3>Next episode countdown (seconds)</h3>
+      <p>0 = show Play now only</p>
+    </div>
+    <select id="nextEpisodeCountdownSec">
+      <option value="0">0 — button only</option>
+      <option value="10">10</option>
+      <option value="15">15</option>
+      <option value="20">20</option>
+      <option value="30">30</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="setting-info">
+      <h3>Skip intro (seconds from start)</h3>
+      <p>0 = hide. Button shows at start of episode</p>
+    </div>
+    <select id="skipIntroSeconds">
+      <option value="0">Off</option>
+      <option value="60">60</option>
+      <option value="90">90</option>
+      <option value="120">120</option>
+      <option value="180">180</option>
+    </select>
+  </div>
+
   <div class="section-title">Stremio Addons</div>
 
   <div class="card">
@@ -1392,6 +1502,9 @@ class SettingsService extends ChangeNotifier {
           }
           apSel.value = savedAddon;
           if (apSel.value !== savedAddon) apSel.value = '';
+          document.getElementById('nextEpisodeAuto').checked = !!msg.data.next_episode_auto_enabled;
+          document.getElementById('nextEpisodeCountdownSec').value = String(msg.data.next_episode_countdown_sec ?? 15);
+          document.getElementById('skipIntroSeconds').value = String(msg.data.skip_intro_seconds ?? 90);
           currentAddons = msg.data.stremio_addons || [];
           liveTvStremioEpgMap = msg.data.live_tv_stremio_epg_map || {};
           iptvFavoriteUrls = msg.data.iptv_favorite_stream_urls || [];
@@ -1449,6 +1562,16 @@ class SettingsService extends ChangeNotifier {
       sendUpdate({ auto_play_stremio_addon: e.target.value });
     });
 
+    document.getElementById('nextEpisodeAuto').addEventListener('change', (e) => {
+      sendUpdate({ next_episode_auto_enabled: e.target.checked });
+    });
+    document.getElementById('nextEpisodeCountdownSec').addEventListener('change', (e) => {
+      sendUpdate({ next_episode_countdown_sec: parseInt(e.target.value) });
+    });
+    document.getElementById('skipIntroSeconds').addEventListener('change', (e) => {
+      sendUpdate({ skip_intro_seconds: parseInt(e.target.value) });
+    });
+
     let rdTimer, tbTimer;
     document.getElementById('rdApiKey').addEventListener('input', (e) => {
       clearTimeout(rdTimer);
@@ -1489,6 +1612,9 @@ class SettingsService extends ChangeNotifier {
         stremio_auto_pick_streams: document.getElementById('stremioAutoPickStreams').checked,
         auto_play_source: document.getElementById('autoPlaySource').value,
         auto_play_stremio_addon: document.getElementById('autoPlayStremioAddon').value,
+        next_episode_auto_enabled: document.getElementById('nextEpisodeAuto').checked,
+        next_episode_countdown_sec: parseInt(document.getElementById('nextEpisodeCountdownSec').value),
+        skip_intro_seconds: parseInt(document.getElementById('skipIntroSeconds').value),
         stremio_addons: currentAddons,
         live_tv_stremio_epg_map: liveTvStremioEpgMap,
         iptv_favorite_stream_urls: iptvFavoriteUrls
@@ -1519,7 +1645,8 @@ class SettingsService extends ChangeNotifier {
           const keys = [
             'streaming_mode', 'use_debrid', 'debrid_provider', 'rd_api_key', 'tb_api_key',
             'cache_size_mb', 'subtitle_fontsize', 'iptv_m3u_url', 'epg_url',
-            'stremio_epg_auto_match', 'stremio_auto_pick_streams', 'auto_play_source', 'auto_play_stremio_addon', 'stremio_addons',
+            'stremio_epg_auto_match', 'stremio_auto_pick_streams', 'auto_play_source', 'auto_play_stremio_addon',
+            'next_episode_auto_enabled', 'next_episode_countdown_sec', 'skip_intro_seconds', 'stremio_addons',
             'live_tv_stremio_epg_map', 'iptv_favorite_stream_urls', 'stremio_addons_rich'
           ];
           const data = {};

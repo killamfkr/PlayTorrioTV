@@ -1,6 +1,7 @@
 package com.playtorrio.playtorrio_tv
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -93,6 +94,42 @@ class PlayerActivity : AppCompatActivity() {
     private var cwMediaType = "movie"
     private var cwResumePositionMs = 0L
     private var hasResumed = false
+
+    // Next episode + skip intro (JSON from Flutter)
+    private var hasNextEpisodePayload = false
+    private var nextEpisodeTmdbId = 0
+    private var nextEpisodeSeason = 0
+    private var nextEpisodeNumber = 0
+    private var nextEpisodeShowTitle = ""
+    private var nextEpisodeImdb = ""
+    private var nextEpisodeBackdrop = ""
+    private var nextEpisodePoster = ""
+    private var nextEpisodeMediaType = "tv"
+    private var nextEpisodeLogo = ""
+    private var nextEpisodeAuto = true
+    private var nextEpisodeCountdownSec = 15
+    private var skipIntroSec = 0
+    private var skipIntroDone = false
+
+    private lateinit var skipIntroChip: TextView
+    private lateinit var nextEpisodeOverlay: View
+    private lateinit var nextEpisodeTitleText: TextView
+    private lateinit var nextEpisodeCountdownText: TextView
+    private lateinit var nextEpisodePlayNowButton: android.widget.Button
+    private lateinit var nextEpisodeCancelButton: android.widget.Button
+    private var nextEpisodeRemainingSec = 0
+
+    private val nextEpisodeTick = object : Runnable {
+        override fun run() {
+            if (nextEpisodeRemainingSec <= 0) {
+                fireNextEpisodeIntent()
+                return
+            }
+            nextEpisodeCountdownText.text = "Starting in ${nextEpisodeRemainingSec}s…"
+            nextEpisodeRemainingSec--
+            handler.postDelayed(this, 1000L)
+        }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -134,6 +171,8 @@ class PlayerActivity : AppCompatActivity() {
             cwPosterPath = intent.getStringExtra("posterPath") ?: ""
             cwMediaType = intent.getStringExtra("mediaType") ?: "movie"
             cwResumePositionMs = intent.getLongExtra("resumePositionMs", 0L)
+
+            parseNextEpisodePayload(intent.getStringExtra("nextEpisodePayload"))
             
             // Start foreground service to keep app alive during playback
             PlayerForegroundService.start(this, title)
@@ -197,6 +236,7 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             setupVlcEventListener()
+            wireSkipIntroAndNextEpisodeButtons()
 
             if (isStreaming) {
                 // Streaming mode: show loading overlay, call WebStreamr only
@@ -251,6 +291,109 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun wireSkipIntroAndNextEpisodeButtons() {
+        skipIntroChip.setOnClickListener {
+            if (skipIntroSec <= 0) return@setOnClickListener
+            val len = mediaPlayer.length
+            val target = skipIntroSec * 1000L
+            if (len > 0 && target < len) {
+                mediaPlayer.time = target
+                seekTarget = target
+            }
+            skipIntroChip.visibility = View.GONE
+            skipIntroDone = true
+        }
+        nextEpisodePlayNowButton.setOnClickListener {
+            handler.removeCallbacks(nextEpisodeTick)
+            fireNextEpisodeIntent()
+        }
+        nextEpisodeCancelButton.setOnClickListener {
+            handler.removeCallbacks(nextEpisodeTick)
+            nextEpisodeOverlay.visibility = View.GONE
+            finish()
+        }
+    }
+
+    private fun parseNextEpisodePayload(json: String?) {
+        if (json.isNullOrBlank()) return
+        try {
+            val o = JSONObject(json)
+            nextEpisodeTmdbId = o.optInt("tmdbId", 0)
+            if (nextEpisodeTmdbId <= 0) return
+            nextEpisodeSeason = o.optInt("season", 0)
+            nextEpisodeNumber = o.optInt("episode", 0)
+            nextEpisodeShowTitle = o.optString("title", "")
+            nextEpisodeImdb = o.optString("imdbId", "")
+            nextEpisodeBackdrop = o.optString("backdropPath", "")
+            nextEpisodePoster = o.optString("posterPath", "")
+            nextEpisodeMediaType = o.optString("mediaType", "tv")
+            nextEpisodeLogo = o.optString("logoUrl", "")
+            nextEpisodeAuto = o.optBoolean("nextEpisodeAuto", true)
+            nextEpisodeCountdownSec = o.optInt("nextEpisodeCountdownSec", 15).coerceIn(0, 120)
+            skipIntroSec = o.optInt("skipIntroSec", 0).coerceIn(0, 600)
+            hasNextEpisodePayload = nextEpisodeSeason > 0 && nextEpisodeNumber > 0
+        } catch (_: Exception) {
+            hasNextEpisodePayload = false
+        }
+    }
+
+    private fun maybeShowSkipIntroChip() {
+        if (!hasNextEpisodePayload || skipIntroDone || skipIntroSec <= 0) return
+        if (cwResumePositionMs > 15_000L) {
+            skipIntroDone = true
+            return
+        }
+        val t = mediaPlayer.time
+        if (t in 0 until 120_000L) {
+            skipIntroChip.visibility = View.VISIBLE
+        }
+    }
+
+    private fun showNextEpisodeOverlay() {
+        if (!hasNextEpisodePayload) {
+            finish()
+            return
+        }
+        stopProgressUpdate()
+        nextEpisodeOverlay.visibility = View.VISIBLE
+        nextEpisodeTitleText.text = "Next: S${nextEpisodeSeason}E${nextEpisodeNumber}"
+        handler.removeCallbacks(nextEpisodeTick)
+        if (!nextEpisodeAuto || nextEpisodeCountdownSec <= 0) {
+            nextEpisodeCountdownText.text = if (nextEpisodeCountdownSec <= 0) "Press Play now to continue" else ""
+            nextEpisodePlayNowButton.requestFocus()
+            return
+        }
+        nextEpisodeRemainingSec = nextEpisodeCountdownSec
+        nextEpisodeCountdownText.text = "Starting in ${nextEpisodeRemainingSec}s…"
+        nextEpisodeRemainingSec--
+        handler.postDelayed(nextEpisodeTick, 1000L)
+        nextEpisodePlayNowButton.requestFocus()
+    }
+
+    private fun fireNextEpisodeIntent() {
+        if (!hasNextEpisodePayload) {
+            finish()
+            return
+        }
+        val json = JSONObject().apply {
+            put("tmdbId", nextEpisodeTmdbId)
+            put("season", nextEpisodeSeason)
+            put("episode", nextEpisodeNumber)
+            put("title", nextEpisodeShowTitle)
+            put("imdbId", nextEpisodeImdb)
+            put("backdropPath", nextEpisodeBackdrop)
+            put("posterPath", nextEpisodePoster)
+            put("mediaType", nextEpisodeMediaType)
+            put("logoUrl", nextEpisodeLogo)
+        }.toString()
+        val i = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("playNextEpisodeJson", json)
+        }
+        startActivity(i)
+        finish()
+    }
+
     private fun setupVlcEventListener() {
         mediaPlayer.setEventListener { event ->
             when (event.type) {
@@ -282,6 +425,7 @@ class PlayerActivity : AppCompatActivity() {
                             mediaPlayer.time = cwResumePositionMs
                             android.util.Log.d(TAG, "Resumed playback at ${cwResumePositionMs}ms")
                         }
+                        maybeShowSkipIntroChip()
                     }
                 }
                 MediaPlayer.Event.Paused -> {
@@ -301,7 +445,12 @@ class PlayerActivity : AppCompatActivity() {
                         val pos = mediaPlayer.position
                         android.util.Log.d(TAG, "VLC EndReached — pos=$pos time=${mediaPlayer.time} len=${mediaPlayer.length}")
                         if (pos > 0.95f || pos < 0f) {
-                            finish()
+                            saveWatchProgress()
+                            if (hasNextEpisodePayload) {
+                                showNextEpisodeOverlay()
+                            } else {
+                                finish()
+                            }
                         } else {
                             android.util.Log.w(TAG, "EndReached at pos=$pos — ignoring (likely seek-related)")
                         }
@@ -494,6 +643,16 @@ class PlayerActivity : AppCompatActivity() {
         streamingTitleText = findViewById(R.id.streamingTitleText)
         streamingStatusText = findViewById(R.id.streamingStatusText)
         bufferingOverlay = findViewById(R.id.bufferingOverlay)
+
+        skipIntroChip = findViewById(R.id.skipIntroChip)
+        skipIntroChip.visibility = View.GONE
+
+        nextEpisodeOverlay = findViewById(R.id.nextEpisodeOverlay)
+        nextEpisodeTitleText = findViewById(R.id.nextEpisodeTitleText)
+        nextEpisodeCountdownText = findViewById(R.id.nextEpisodeCountdownText)
+        nextEpisodePlayNowButton = findViewById(R.id.nextEpisodePlayNowButton)
+        nextEpisodeCancelButton = findViewById(R.id.nextEpisodeCancelButton)
+        nextEpisodeOverlay.visibility = View.GONE
         
         controlsOverlay.visibility = View.GONE
         
@@ -967,6 +1126,10 @@ class PlayerActivity : AppCompatActivity() {
                 seekBar.progress = progress
                 currentTimeText.text = formatTime(currentTime)
                 totalTimeText.text = formatTime(totalTime)
+                if (skipIntroSec > 0 && !skipIntroDone && currentTime >= skipIntroSec * 1000L) {
+                    skipIntroChip.visibility = View.GONE
+                    skipIntroDone = true
+                }
             } else if (currentTime > 0) {
                 currentTimeText.text = formatTime(currentTime)
                 totalTimeText.text = "--:--"
@@ -1310,6 +1473,7 @@ class PlayerActivity : AppCompatActivity() {
     }
     
     override fun onDestroy() {
+        handler.removeCallbacks(nextEpisodeTick)
         super.onDestroy()
         
         // Cancel streaming extraction if running
