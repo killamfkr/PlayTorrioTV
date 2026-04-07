@@ -336,8 +336,18 @@ class StremioAddonService {
     );
   }
 
-  /// First Stremio row when Sources filter is “All”: first addon (settings order), first stream in JSON.
-  static StremioStream? firstStreamForAutoPick(Map<String, List<StremioStream>> byAddon) {
+  /// First Stremio row: [preferredAddonName] manifest name if it has streams, else first addon in map order.
+  static StremioStream? firstStreamForAutoPick(
+    Map<String, List<StremioStream>> byAddon, {
+    String? preferredAddonName,
+  }) {
+    final pref = preferredAddonName?.trim();
+    if (pref != null && pref.isNotEmpty) {
+      final list = byAddon[pref];
+      if (list != null && list.isNotEmpty) {
+        return list.first;
+      }
+    }
     for (final list in byAddon.values) {
       if (list.isNotEmpty) {
         return list.first;

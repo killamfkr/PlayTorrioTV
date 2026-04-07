@@ -221,9 +221,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _SettingToggle(
                     title: 'Auto-play movie & episodes',
                     subtitle:
-                        'When you pick a movie or episode, play the first link automatically: PlayTorrio index first if any, else first Stremio stream (addon order).',
+                        'When you pick a movie or episode, play the first link automatically (order below).',
                     value: _settings.stremioAutoPickStreams,
                     onChanged: (v) => _settings.setStremioAutoPickStreams(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Auto-play tries first',
+                    subtitle: 'Stremio addons or PlayTorrio index results',
+                    value: _settings.autoPlaySource,
+                    options: const {
+                      'playtorrio_first': 'PlayTorrio, then Stremio',
+                      'stremio_first': 'Stremio, then PlayTorrio',
+                    },
+                    onChanged: (v) => _settings.setAutoPlaySource(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Preferred Stremio addon',
+                    subtitle: 'Which addon’s first stream when Stremio is used (empty = list order)',
+                    value: _settings.autoPlayStremioAddon.isEmpty
+                        ? ''
+                        : _settings.autoPlayStremioAddon,
+                    options: () {
+                      final m = <String, String>{'': 'First in list order'};
+                      for (final n in _settings.stremioAddonAutoPlayChoices) {
+                        m[n] = n;
+                      }
+                      final saved = _settings.autoPlayStremioAddon.trim();
+                      if (saved.isNotEmpty && !m.containsKey(saved)) {
+                        m[saved] = '$saved (saved)';
+                      }
+                      return m;
+                    }(),
+                    onChanged: (v) => _settings.setAutoPlayStremioAddon(v),
                   ),
                   const SizedBox(height: 8),
                   _SettingInfo(

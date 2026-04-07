@@ -73,6 +73,61 @@ class SettingsService extends ChangeNotifier {
     _broadcastSettings();
   }
 
+  /// `playtorrio_first` | `stremio_first` — which source auto-play tries first.
+  String _autoPlaySource = 'playtorrio_first';
+  String get autoPlaySource => _autoPlaySource;
+  bool get autoPlayStremioFirst => _autoPlaySource == 'stremio_first';
+
+  void setAutoPlaySource(String value) {
+    _autoPlaySource = (value == 'stremio_first') ? 'stremio_first' : 'playtorrio_first';
+    _prefs.setString('auto_play_source', _autoPlaySource);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  /// Manifest-style addon name to prefer for Stremio auto-play; empty = first addon in list order.
+  String _autoPlayStremioAddon = '';
+  String get autoPlayStremioAddon => _autoPlayStremioAddon;
+
+  void setAutoPlayStremioAddon(String value) {
+    _autoPlayStremioAddon = value.trim();
+    _prefs.setString('auto_play_stremio_addon', _autoPlayStremioAddon);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
+  /// Display names for installed stream addons (for auto-play default picker). Matches stream map keys.
+  List<String> get stremioAddonAutoPlayChoices {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final url in _stremioAddons) {
+      final n = _displayNameForStremioAddonUrl(url);
+      if (seen.add(n)) {
+        out.add(n);
+      }
+    }
+    return out;
+  }
+
+  String _displayNameForStremioAddonUrl(String url) {
+    final norm = _normalizeAddonUrl(url);
+    for (final a in _stremioAddonsRich) {
+      final bu = _normalizeAddonUrl(a['baseUrl']?.toString() ?? '');
+      if (bu == norm) {
+        final top = (a['name'] ?? '').toString().trim();
+        if (top.isNotEmpty) {
+          return top;
+        }
+        final m = a['manifest'];
+        if (m is Map && m['name'] != null) {
+          return m['name'].toString();
+        }
+        return url;
+      }
+    }
+    return url;
+  }
+
   /// Stremio TV channel → XMLTV `channel id` (manual EPG link). Key: `baseUrl|||channelId`
   final Map<String, String> _stremioEpgMap = {};
 
@@ -151,6 +206,11 @@ class SettingsService extends ChangeNotifier {
     _epgUrl = _prefs.getString('epg_url') ?? '';
     _stremioEpgAutoMatch = _prefs.getBool('stremio_epg_auto_match') ?? false;
     _stremioAutoPickStreams = _prefs.getBool('stremio_auto_pick_streams') ?? false;
+    _autoPlaySource = _prefs.getString('auto_play_source') ?? 'playtorrio_first';
+    if (_autoPlaySource != 'stremio_first' && _autoPlaySource != 'playtorrio_first') {
+      _autoPlaySource = 'playtorrio_first';
+    }
+    _autoPlayStremioAddon = _prefs.getString('auto_play_stremio_addon') ?? '';
     final epgMapRaw = _prefs.getString('live_tv_stremio_epg_map');
     if (epgMapRaw != null && epgMapRaw.isNotEmpty) {
       try {
@@ -370,6 +430,9 @@ class SettingsService extends ChangeNotifier {
         'epg_url': _epgUrl,
         'stremio_epg_auto_match': _stremioEpgAutoMatch,
         'stremio_auto_pick_streams': _stremioAutoPickStreams,
+        'auto_play_source': _autoPlaySource,
+        'auto_play_stremio_addon': _autoPlayStremioAddon,
+        'auto_play_stremio_addon_choices': stremioAddonAutoPlayChoices,
         'live_tv_stremio_epg_map': _stremioEpgMap,
         'iptv_favorite_stream_urls': _iptvFavoriteStreamUrls,
       };
@@ -424,6 +487,18 @@ class SettingsService extends ChangeNotifier {
           _stremioAutoPickStreams = false;
           _prefs.setBool('stremio_auto_pick_streams', false);
         }
+        if (!json.containsKey('auto_play_source')) {
+          _autoPlaySource = 'playtorrio_first';
+          _prefs.setString('auto_play_source', _autoPlaySource);
+        }
+        if (!json.containsKey('auto_play_stremio_addon')) {
+          _autoPlayStremioAddon = '';
+          _prefs.setString('auto_play_stremio_addon', '');
+        }
+        if (!json.containsKey('auto_play_source')) {
+          _autoPlaySource = 'playtorrio_first';
+          _prefs.setString('auto_play_source', _autoPlaySource);
+        }
         if (!json.containsKey('live_tv_stremio_epg_map')) {
           _stremioEpgMap.clear();
           _prefs.setString('live_tv_stremio_epg_map', '{}');
@@ -476,7 +551,11 @@ class SettingsService extends ChangeNotifier {
     _prefs.setString('epg_url', '');
     _prefs.setBool('stremio_epg_auto_match', false);
     _stremioAutoPickStreams = false;
+    _autoPlaySource = 'playtorrio_first';
+    _autoPlayStremioAddon = '';
     _prefs.setBool('stremio_auto_pick_streams', false);
+    _prefs.setString('auto_play_source', 'playtorrio_first');
+    _prefs.setString('auto_play_stremio_addon', '');
     _prefs.setString('live_tv_stremio_epg_map', '{}');
     _prefs.setStringList('iptv_favorite_stream_urls', []);
     notifyListeners();
@@ -602,6 +681,15 @@ class SettingsService extends ChangeNotifier {
     if (json.containsKey('stremio_auto_pick_streams')) {
       _stremioAutoPickStreams = _jsonToBool(json['stremio_auto_pick_streams']);
       _prefs.setBool('stremio_auto_pick_streams', _stremioAutoPickStreams);
+    }
+    if (json.containsKey('auto_play_source')) {
+      final v = _jsonToString(json['auto_play_source']).trim();
+      _autoPlaySource = (v == 'stremio_first') ? 'stremio_first' : 'playtorrio_first';
+      _prefs.setString('auto_play_source', _autoPlaySource);
+    }
+    if (json.containsKey('auto_play_stremio_addon')) {
+      _autoPlayStremioAddon = _jsonToString(json['auto_play_stremio_addon']).trim();
+      _prefs.setString('auto_play_stremio_addon', _autoPlayStremioAddon);
     }
     if (json.containsKey('live_tv_stremio_epg_map')) {
       final m = json['live_tv_stremio_epg_map'];
@@ -1140,13 +1228,32 @@ class SettingsService extends ChangeNotifier {
     <div class="setting-row">
       <div class="setting-info">
         <h3>Auto-play movie &amp; episodes</h3>
-        <p>When you choose a movie or episode, play the first link (PlayTorrio first if any, else first Stremio).</p>
+        <p>When you choose a movie or episode, play the first link automatically.</p>
       </div>
       <label class="toggle">
         <input type="checkbox" id="stremioAutoPickStreams">
         <span class="slider"></span>
       </label>
     </div>
+  </div>
+
+  <div class="card">
+    <div class="setting-info">
+      <h3>Auto-play tries first</h3>
+      <p>Which source to try before the other when auto-play is on</p>
+    </div>
+    <select id="autoPlaySource">
+      <option value="playtorrio_first">PlayTorrio index, then Stremio</option>
+      <option value="stremio_first">Stremio addons, then PlayTorrio</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="setting-info">
+      <h3>Preferred Stremio addon for auto-play</h3>
+      <p>Pick which addon’s first stream to use (when Stremio is tried). Empty = first addon in your list order.</p>
+    </div>
+    <select id="autoPlayStremioAddon"></select>
   </div>
 
   <div class="section-title">Stremio Addons</div>
@@ -1262,6 +1369,29 @@ class SettingsService extends ChangeNotifier {
           document.getElementById('epgUrl').value = msg.data.epg_url || '';
           document.getElementById('stremioEpgAutoMatch').checked = !!msg.data.stremio_epg_auto_match;
           document.getElementById('stremioAutoPickStreams').checked = !!msg.data.stremio_auto_pick_streams;
+          document.getElementById('autoPlaySource').value =
+            (msg.data.auto_play_source === 'stremio_first') ? 'stremio_first' : 'playtorrio_first';
+          const apSel = document.getElementById('autoPlayStremioAddon');
+          const choices = msg.data.auto_play_stremio_addon_choices || [];
+          const savedAddon = (msg.data.auto_play_stremio_addon || '').trim();
+          apSel.innerHTML = '<option value="">First in list order</option>';
+          const seen = new Set();
+          choices.forEach((n) => {
+            if (!n || seen.has(n)) return;
+            seen.add(n);
+            const o = document.createElement('option');
+            o.value = n;
+            o.textContent = n;
+            apSel.appendChild(o);
+          });
+          if (savedAddon && !seen.has(savedAddon)) {
+            const o = document.createElement('option');
+            o.value = savedAddon;
+            o.textContent = savedAddon + ' (saved)';
+            apSel.appendChild(o);
+          }
+          apSel.value = savedAddon;
+          if (apSel.value !== savedAddon) apSel.value = '';
           currentAddons = msg.data.stremio_addons || [];
           liveTvStremioEpgMap = msg.data.live_tv_stremio_epg_map || {};
           iptvFavoriteUrls = msg.data.iptv_favorite_stream_urls || [];
@@ -1311,6 +1441,14 @@ class SettingsService extends ChangeNotifier {
       sendUpdate({ stremio_auto_pick_streams: e.target.checked });
     });
 
+    document.getElementById('autoPlaySource').addEventListener('change', (e) => {
+      sendUpdate({ auto_play_source: e.target.value });
+    });
+
+    document.getElementById('autoPlayStremioAddon').addEventListener('change', (e) => {
+      sendUpdate({ auto_play_stremio_addon: e.target.value });
+    });
+
     let rdTimer, tbTimer;
     document.getElementById('rdApiKey').addEventListener('input', (e) => {
       clearTimeout(rdTimer);
@@ -1349,6 +1487,8 @@ class SettingsService extends ChangeNotifier {
         epg_url: document.getElementById('epgUrl').value,
         stremio_epg_auto_match: document.getElementById('stremioEpgAutoMatch').checked,
         stremio_auto_pick_streams: document.getElementById('stremioAutoPickStreams').checked,
+        auto_play_source: document.getElementById('autoPlaySource').value,
+        auto_play_stremio_addon: document.getElementById('autoPlayStremioAddon').value,
         stremio_addons: currentAddons,
         live_tv_stremio_epg_map: liveTvStremioEpgMap,
         iptv_favorite_stream_urls: iptvFavoriteUrls
@@ -1379,7 +1519,7 @@ class SettingsService extends ChangeNotifier {
           const keys = [
             'streaming_mode', 'use_debrid', 'debrid_provider', 'rd_api_key', 'tb_api_key',
             'cache_size_mb', 'subtitle_fontsize', 'iptv_m3u_url', 'epg_url',
-            'stremio_epg_auto_match', 'stremio_auto_pick_streams', 'stremio_addons',
+            'stremio_epg_auto_match', 'stremio_auto_pick_streams', 'auto_play_source', 'auto_play_stremio_addon', 'stremio_addons',
             'live_tv_stremio_epg_map', 'iptv_favorite_stream_urls', 'stremio_addons_rich'
           ];
           const data = {};
