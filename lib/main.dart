@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dpad/dpad.dart';
@@ -31,7 +33,10 @@ void main() async {
   await ProfileService.instance.init();
   await SettingsService.instance.init();
   await ContinueWatchingService.load();
-  await LocalProxyService().start();
+  // Defer proxy bind — avoids competing with first-frame on low-RAM Fire TV sticks.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(LocalProxyService().start().catchError((_) {}));
+  });
 
   runApp(const PlayTorrioApp());
 }
@@ -307,57 +312,70 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
 
   Future<void> _initialize() async {
     try {
-      // Start TorrServer + fetch trackers + load TMDB data in parallel
       setState(() => _status = 'Starting engine...');
-      final tmdbFuture = TmdbService.getTrending();
 
-      await Future.wait([
-        StreamService.warmup(),
-        PlayerLauncher.warmup(),
-        tmdbFuture,
-      ].map((f) => f.catchError((_) {})));
+      // VLC warmup only on splash — TorrServer can take 30s+ on slow sticks and
+      // was blocking navigation; it starts on first torrent use instead.
+      await PlayerLauncher.warmup().catchError((_) {});
 
+      if (!mounted) {
+        return;
+      }
+
+      List<dynamic> trending = [];
+      try {
+        trending = await TmdbService.getTrending()
+            .timeout(const Duration(seconds: 15));
+      } catch (_) {
+        trending = [];
+      }
+
+      // Start torrent engine in background (never block profile screen).
+      unawaited(StreamService.warmup().catchError((_) {}));
+
+      if (!mounted) {
+        return;
+      }
       setState(() => _status = 'Loading posters...');
 
-      // Pre-cache first ~10 poster and backdrop images
-      final trending = await tmdbFuture.catchError((_) => <dynamic>[]);
-      if (mounted) {
-        final futures = <Future>[];
-        for (var i = 0; i < trending.length && i < 10; i++) {
-          final item = trending[i] as Map<String, dynamic>;
-          final poster = item['poster_path'] as String?;
-          final backdrop = item['backdrop_path'] as String?;
-          if (poster != null && poster.isNotEmpty) {
-            futures.add(precacheImage(
-              CachedNetworkImageProvider(TmdbApi.posterUrl(poster)),
-              context,
-            ).catchError((_) {}));
-          }
-          if (backdrop != null && backdrop.isNotEmpty) {
-            futures.add(precacheImage(
-              CachedNetworkImageProvider(TmdbApi.backdropUrl(backdrop)),
-              context,
-            ).catchError((_) {}));
-          }
+      // Light precache only — 10 images was heavy on 1GB Fire TV RAM.
+      final futures = <Future<void>>[];
+      for (var i = 0; i < trending.length && i < 4; i++) {
+        final item = trending[i] as Map<String, dynamic>;
+        final poster = item['poster_path'] as String?;
+        final backdrop = item['backdrop_path'] as String?;
+        if (poster != null && poster.isNotEmpty) {
+          futures.add(precacheImage(
+            CachedNetworkImageProvider(TmdbApi.posterUrl(poster)),
+            context,
+          ).catchError((_) {}));
         }
-        await Future.wait(futures).timeout(
-          const Duration(seconds: 6),
-          onTimeout: () => [],
-        );
+        if (backdrop != null && backdrop.isNotEmpty) {
+          futures.add(precacheImage(
+            CachedNetworkImageProvider(TmdbApi.backdropUrl(backdrop)),
+            context,
+          ).catchError((_) {}));
+        }
+      }
+      if (futures.isNotEmpty) {
+        try {
+          await Future.wait(futures).timeout(const Duration(seconds: 4));
+        } catch (_) {}
       }
     } catch (_) {}
 
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (_, _, _) => const ProfileScreen(),
-          transitionsBuilder: (_, animation, _, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 600),
-        ),
-      );
+    if (!mounted) {
+      return;
     }
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => const ProfileScreen(),
+        transitionsBuilder: (_, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 600),
+      ),
+    );
   }
 
   @override
