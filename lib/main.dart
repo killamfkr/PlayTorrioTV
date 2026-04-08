@@ -26,6 +26,9 @@ import 'services/profile_service.dart';
 import 'services/app_navigation_bridge.dart';
 import 'screens/profile_screen.dart';
 
+/// `true` when built with `--dart-define=LOW_RAM=true` (use with `--flavor lowram`).
+const bool kLowRamStartup = bool.fromEnvironment('LOW_RAM', defaultValue: false);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
@@ -33,10 +36,13 @@ void main() async {
   await ProfileService.instance.init();
   await SettingsService.instance.init();
   await ContinueWatchingService.load();
-  // Defer proxy bind — avoids competing with first-frame on low-RAM Fire TV sticks.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(LocalProxyService().start().catchError((_) {}));
-  });
+  if (kLowRamStartup) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(LocalProxyService().start().catchError((_) {}));
+    });
+  } else {
+    await LocalProxyService().start().catchError((_) {});
+  }
 
   runApp(const PlayTorrioApp());
 }
@@ -314,53 +320,82 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
     try {
       setState(() => _status = 'Starting engine...');
 
-      // VLC warmup only on splash — TorrServer can take 30s+ on slow sticks and
-      // was blocking navigation; it starts on first torrent use instead.
-      await PlayerLauncher.warmup().catchError((_) {});
-
-      if (!mounted) {
-        return;
-      }
-
-      List<dynamic> trending = [];
-      try {
-        trending = await TmdbService.getTrending()
-            .timeout(const Duration(seconds: 15));
-      } catch (_) {
-        trending = [];
-      }
-
-      // Start torrent engine in background (never block profile screen).
-      unawaited(StreamService.warmup().catchError((_) {}));
-
-      if (!mounted) {
-        return;
-      }
-      setState(() => _status = 'Loading posters...');
-
-      // Light precache only — 10 images was heavy on 1GB Fire TV RAM.
-      final futures = <Future<void>>[];
-      for (var i = 0; i < trending.length && i < 4; i++) {
-        final item = trending[i] as Map<String, dynamic>;
-        final poster = item['poster_path'] as String?;
-        final backdrop = item['backdrop_path'] as String?;
-        if (poster != null && poster.isNotEmpty) {
-          futures.add(precacheImage(
-            CachedNetworkImageProvider(TmdbApi.posterUrl(poster)),
-            context,
-          ).catchError((_) {}));
+      if (kLowRamStartup) {
+        await PlayerLauncher.warmup().catchError((_) {});
+        if (!mounted) {
+          return;
         }
-        if (backdrop != null && backdrop.isNotEmpty) {
-          futures.add(precacheImage(
-            CachedNetworkImageProvider(TmdbApi.backdropUrl(backdrop)),
-            context,
-          ).catchError((_) {}));
-        }
-      }
-      if (futures.isNotEmpty) {
+        List<dynamic> trending = [];
         try {
-          await Future.wait(futures).timeout(const Duration(seconds: 4));
-        } catch (_) {}
+          trending = await TmdbService.getTrending()
+              .timeout(const Duration(seconds: 15));
+        } catch (_) {
+          trending = [];
+        }
+        unawaited(StreamService.warmup().catchError((_) {}));
+        if (!mounted) {
+          return;
+        }
+        setState(() => _status = 'Loading posters...');
+        final futures = <Future<void>>[];
+        for (var i = 0; i < trending.length && i < 4; i++) {
+          final item = trending[i] as Map<String, dynamic>;
+          final poster = item['poster_path'] as String?;
+          final backdrop = item['backdrop_path'] as String?;
+          if (poster != null && poster.isNotEmpty) {
+            futures.add(precacheImage(
+              CachedNetworkImageProvider(TmdbApi.posterUrl(poster)),
+              context,
+            ).catchError((_) {}));
+          }
+          if (backdrop != null && backdrop.isNotEmpty) {
+            futures.add(precacheImage(
+              CachedNetworkImageProvider(TmdbApi.backdropUrl(backdrop)),
+              context,
+            ).catchError((_) {}));
+          }
+        }
+        if (futures.isNotEmpty) {
+          try {
+            await Future.wait(futures).timeout(const Duration(seconds: 4));
+          } catch (_) {}
+        }
+      } else {
+        final tmdbFuture = TmdbService.getTrending();
+        await Future.wait([
+          StreamService.warmup(),
+          PlayerLauncher.warmup(),
+          tmdbFuture,
+        ].map((f) => f.catchError((_) {})));
+        if (!mounted) {
+          return;
+        }
+        setState(() => _status = 'Loading posters...');
+        final trending = await tmdbFuture.catchError((_) => <dynamic>[]);
+        if (mounted) {
+          final futures = <Future<void>>[];
+          for (var i = 0; i < trending.length && i < 10; i++) {
+            final item = trending[i] as Map<String, dynamic>;
+            final poster = item['poster_path'] as String?;
+            final backdrop = item['backdrop_path'] as String?;
+            if (poster != null && poster.isNotEmpty) {
+              futures.add(precacheImage(
+                CachedNetworkImageProvider(TmdbApi.posterUrl(poster)),
+                context,
+              ).catchError((_) {}));
+            }
+            if (backdrop != null && backdrop.isNotEmpty) {
+              futures.add(precacheImage(
+                CachedNetworkImageProvider(TmdbApi.backdropUrl(backdrop)),
+                context,
+              ).catchError((_) {}));
+            }
+          }
+          await Future.wait(futures).timeout(
+            const Duration(seconds: 6),
+            onTimeout: () => [],
+          );
+        }
       }
     } catch (_) {}
 

@@ -96,20 +96,26 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      # Universal APK (all ABIs) — matches pre-split behavior; some TV sideloaders
-      # mishandle split APKs or the wrong ABI file.
-      - name: Build release APK (universal)
-        run: flutter build apk --release
+      # Two flavors: `original` (full splash: TorrServer + 10 image precache) and
+      # `lowram` (--dart-define=LOW_RAM=true: deferred proxy, background TorrServer, lighter precache).
+      - name: Build release APKs (original + low RAM)
+        run: |
+          set -euo pipefail
+          flutter build apk --release --flavor original
+          flutter build apk --release --flavor lowram --dart-define=LOW_RAM=true
         env:
           GRADLE_OPTS: -Xmx4g
 
-      - name: Collect APK
+      - name: Collect APKs
         run: |
           set -euo pipefail
           mkdir -p artifact_apk
-          U="build/app/outputs/flutter-apk/app-release.apk"
-          test -f "$U" || { echo "::error::Missing $U"; exit 1; }
-          cp -f "$U" artifact_apk/
+          O="build/app/outputs/flutter-apk/app-original-release.apk"
+          L="build/app/outputs/flutter-apk/app-lowram-release.apk"
+          test -f "$O" || { echo "::error::Missing $O"; exit 1; }
+          test -f "$L" || { echo "::error::Missing $L"; exit 1; }
+          cp -f "$O" artifact_apk/playtorrio-original-release.apk
+          cp -f "$L" artifact_apk/playtorrio-lowram-release.apk
           ls -la artifact_apk/
 
       - name: Create draft GitHub Release with APK
@@ -137,7 +143,7 @@ jobs:
             --title "PlayTorrio TV Android — $TITLE_REF (draft, run ${{ github.run_id }})" \
             --notes "Automated draft (**$EVENT**) from \`${{ github.sha }}\`.
 
-          Single **universal** APK (\`app-release.apk\`) with all CPU ABIs — same style as before split builds. For smaller per-device APKs locally: \`flutter build apk --release --split-per-abi\`.
+          **\`playtorrio-original-release.apk\`** — full startup (TorrServer on splash, more poster precache). **\`playtorrio-lowram-release.apk\`** — for 1GB Fire TV sticks: lighter splash, TorrServer in background.
 
           Tag: \`$TAG\`" \
             ./*.apk
