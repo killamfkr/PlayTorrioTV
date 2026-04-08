@@ -25,9 +25,7 @@ import 'services/local_proxy_service.dart';
 import 'services/profile_service.dart';
 import 'services/app_navigation_bridge.dart';
 import 'screens/profile_screen.dart';
-
-/// `true` when built with `--dart-define=LOW_RAM=true` (use with `--flavor lowram`).
-const bool kLowRamStartup = bool.fromEnvironment('LOW_RAM', defaultValue: false);
+import 'build_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -332,7 +330,7 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
         } catch (_) {
           trending = [];
         }
-        unawaited(StreamService.warmup().catchError((_) {}));
+        // Do not start TorrServer here — overlaps with Home's first TMDB burst on low RAM.
         if (!mounted) {
           return;
         }
@@ -518,8 +516,15 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
     _navSlide = CurvedAnimation(parent: _enterCtrl, curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic));
     _contentFade = CurvedAnimation(parent: _enterCtrl, curve: const Interval(0.2, 1.0, curve: Curves.easeOut));
     _enterCtrl.forward();
-    // Check for updates after UI is settled
-    Future.delayed(const Duration(seconds: 2), () {
+    if (kLowRamStartup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(seconds: 3), () {
+          unawaited(StreamService.warmup().catchError((_) {}));
+        });
+      });
+    }
+    // Low-RAM: delay update check so Home TMDB + images aren't concurrent with GitHub fetch.
+    Future.delayed(Duration(seconds: kLowRamStartup ? 12 : 2), () {
       if (mounted) UpdateDialog.checkAndShow(context);
     });
   }

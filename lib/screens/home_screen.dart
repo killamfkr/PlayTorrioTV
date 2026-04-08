@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../build_config.dart';
 import '../constants.dart';
 import '../services/tmdb_service.dart';
 import '../services/continue_watching_service.dart';
@@ -58,20 +59,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Low-RAM: run TMDB calls in small batches to avoid OOM when many JSON + images load at once.
+  Future<List<T>> _batched<T>(List<Future<T> Function()> jobs, {required int batchSize}) async {
+    final out = <T>[];
+    for (var i = 0; i < jobs.length; i += batchSize) {
+      final end = (i + batchSize > jobs.length) ? jobs.length : i + batchSize;
+      final chunk = jobs.sublist(i, end).map((f) => f()).toList();
+      out.addAll(await Future.wait(chunk));
+    }
+    return out;
+  }
+
   Future<void> _loadContent() async {
     setState(() => _isLoading = true);
     try {
       List<_ContentRow> rows = [];
+      final low = kLowRamStartup;
       switch (widget.category) {
         case 'home':
-          final results = await Future.wait([
-            TmdbService.getTrending(),
-            TmdbService.getPopularMovies(),
-            TmdbService.getPopularTv(),
-            TmdbService.getTopRatedMovies(),
-            TmdbService.getTopRatedTv(),
-            TmdbService.getNowPlayingMovies(),
-          ]);
+          final results = low
+              ? await _batched<dynamic>([
+                  () => TmdbService.getTrending(),
+                  () => TmdbService.getPopularMovies(),
+                  () => TmdbService.getPopularTv(),
+                  () => TmdbService.getTopRatedMovies(),
+                  () => TmdbService.getTopRatedTv(),
+                  () => TmdbService.getNowPlayingMovies(),
+                ], batchSize: 2)
+              : await Future.wait([
+                  TmdbService.getTrending(),
+                  TmdbService.getPopularMovies(),
+                  TmdbService.getPopularTv(),
+                  TmdbService.getTopRatedMovies(),
+                  TmdbService.getTopRatedTv(),
+                  TmdbService.getNowPlayingMovies(),
+                ]);
           rows = [
             _ContentRow('Trending Now', results[0], useBackdrop: true),
             _ContentRow('Popular Movies', results[1]),
@@ -82,12 +104,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ];
           break;
         case 'movies':
-          final results = await Future.wait([
-            TmdbService.getPopularMovies(),
-            TmdbService.getTopRatedMovies(),
-            TmdbService.getNowPlayingMovies(),
-            TmdbService.getTrending(timeWindow: 'week'),
-          ]);
+          final results = low
+              ? await _batched<dynamic>([
+                  () => TmdbService.getPopularMovies(),
+                  () => TmdbService.getTopRatedMovies(),
+                  () => TmdbService.getNowPlayingMovies(),
+                  () => TmdbService.getTrending(timeWindow: 'week'),
+                ], batchSize: 2)
+              : await Future.wait([
+                  TmdbService.getPopularMovies(),
+                  TmdbService.getTopRatedMovies(),
+                  TmdbService.getNowPlayingMovies(),
+                  TmdbService.getTrending(timeWindow: 'week'),
+                ]);
           rows = [
             _ContentRow('Popular Movies', results[0], useBackdrop: true),
             _ContentRow('Top Rated', results[1]),
@@ -96,11 +125,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ];
           break;
         case 'tv':
-          final results = await Future.wait([
-            TmdbService.getPopularTv(),
-            TmdbService.getTopRatedTv(),
-            TmdbService.getTrending(timeWindow: 'week'),
-          ]);
+          final results = low
+              ? await _batched<dynamic>([
+                  () => TmdbService.getPopularTv(),
+                  () => TmdbService.getTopRatedTv(),
+                  () => TmdbService.getTrending(timeWindow: 'week'),
+                ], batchSize: 2)
+              : await Future.wait([
+                  TmdbService.getPopularTv(),
+                  TmdbService.getTopRatedTv(),
+                  TmdbService.getTrending(timeWindow: 'week'),
+                ]);
           rows = [
             _ContentRow('Popular Series', results[0], useBackdrop: true),
             _ContentRow('Top Rated', results[1]),
