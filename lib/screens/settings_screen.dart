@@ -148,6 +148,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 8),
                   _SettingToggle(
+                    title: 'Disable subtitles',
+                    subtitle: 'Hide subtitle controls and turn off all subtitle tracks in the player',
+                    value: _settings.disableSubtitles,
+                    onChanged: (v) => _settings.setDisableSubtitles(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
                     title: 'Use Debrid for Torrents',
                     subtitle: 'Stream torrents via a debrid service',
                     value: _settings.useDebrid,

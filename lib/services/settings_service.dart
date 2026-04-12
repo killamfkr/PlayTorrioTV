@@ -36,6 +36,17 @@ class SettingsService extends ChangeNotifier {
   int _subtitleFontsize = 0; // 0=auto (VLC default)
   int get subtitleFontsize => _subtitleFontsize;
 
+  /// When true, native player hides subtitle UI and turns off all subtitle tracks (embedded + external).
+  bool _disableSubtitles = false;
+  bool get disableSubtitles => _disableSubtitles;
+
+  void setDisableSubtitles(bool value) {
+    _disableSubtitles = value;
+    _prefs.setBool('disable_subtitles', value);
+    notifyListeners();
+    _broadcastSettings();
+  }
+
   List<String> _stremioAddons = [];
   List<String> get stremioAddons => List.unmodifiable(_stremioAddons);
 
@@ -229,6 +240,7 @@ class SettingsService extends ChangeNotifier {
     _torboxApiKey = _prefs.getString('tb_api_key') ?? '';
     _cacheSizeMB = _prefs.getInt('cache_size_mb') ?? 512;
     _subtitleFontsize = _prefs.getInt('subtitle_fontsize') ?? 0;
+    _disableSubtitles = _prefs.getBool('disable_subtitles') ?? false;
     // Migrate old absolute pixel values to new relative divisor values
     const oldToNewSubtitleSize = {28: 14, 36: 10, 48: 7};
     if (oldToNewSubtitleSize.containsKey(_subtitleFontsize)) {
@@ -461,6 +473,7 @@ class SettingsService extends ChangeNotifier {
         'tb_api_key': _torboxApiKey,
         'cache_size_mb': _cacheSizeMB,
         'subtitle_fontsize': _subtitleFontsize,
+        'disable_subtitles': _disableSubtitles,
         'stremio_addons': _stremioAddons,
         'iptv_m3u_url': _iptvM3uUrl,
         'epg_url': _epgUrl,
@@ -546,6 +559,10 @@ class SettingsService extends ChangeNotifier {
           _skipIntroSeconds = 90;
           _prefs.setInt('skip_intro_seconds', 90);
         }
+        if (!json.containsKey('disable_subtitles')) {
+          _disableSubtitles = false;
+          _prefs.setBool('disable_subtitles', false);
+        }
         if (!json.containsKey('auto_play_source')) {
           _autoPlaySource = 'playtorrio_first';
           _prefs.setString('auto_play_source', _autoPlaySource);
@@ -578,6 +595,7 @@ class SettingsService extends ChangeNotifier {
     _torboxApiKey = '';
     _cacheSizeMB = 512;
     _subtitleFontsize = 0;
+    _disableSubtitles = false;
     _stremioAddons = [];
     _stremioAddonsRich = [];
     _iptvM3uUrl = '';
@@ -589,6 +607,7 @@ class SettingsService extends ChangeNotifier {
     _prefs.setString('tb_api_key', '');
     _prefs.setInt('cache_size_mb', 512);
     _prefs.setInt('subtitle_fontsize', 0);
+    _prefs.setBool('disable_subtitles', false);
     _prefs.setStringList('stremio_addons', []);
     _prefs.setString('stremio_addons_json', '[]');
     _prefs.setStringList('stremio_addons_rich', []);
@@ -686,6 +705,10 @@ class SettingsService extends ChangeNotifier {
       }
       _subtitleFontsize = size;
       _prefs.setInt('subtitle_fontsize', _subtitleFontsize);
+    }
+    if (json.containsKey('disable_subtitles')) {
+      _disableSubtitles = _jsonToBool(json['disable_subtitles']);
+      _prefs.setBool('disable_subtitles', _disableSubtitles);
     }
     if (json.containsKey('stremio_addons')) {
       final raw = json['stremio_addons'];
@@ -1262,6 +1285,19 @@ class SettingsService extends ChangeNotifier {
     </select>
   </div>
 
+  <div class="card">
+    <div class="setting-row">
+      <div class="setting-info">
+        <h3>Disable subtitles</h3>
+        <p>Turn off embedded subtitles and hide subtitle controls in the player (original &amp; low-RAM builds)</p>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="disableSubtitles">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
   <div class="section-title">Live TV (IPTV)</div>
 
   <div class="card">
@@ -1475,6 +1511,7 @@ class SettingsService extends ChangeNotifier {
           document.getElementById('tbApiKey').value = msg.data.tb_api_key || '';
           document.getElementById('cacheSizeMB').value = msg.data.cache_size_mb || 512;
           document.getElementById('subtitleFontsize').value = msg.data.subtitle_fontsize || 0;
+          document.getElementById('disableSubtitles').checked = !!msg.data.disable_subtitles;
           document.getElementById('iptvM3uUrl').value = msg.data.iptv_m3u_url || '';
           document.getElementById('epgUrl').value = msg.data.epg_url || '';
           document.getElementById('stremioEpgAutoMatch').checked = !!msg.data.stremio_epg_auto_match;
@@ -1534,6 +1571,10 @@ class SettingsService extends ChangeNotifier {
 
     document.getElementById('subtitleFontsize').addEventListener('change', (e) => {
       sendUpdate({ subtitle_fontsize: parseInt(e.target.value) });
+    });
+
+    document.getElementById('disableSubtitles').addEventListener('change', (e) => {
+      sendUpdate({ disable_subtitles: e.target.checked });
     });
 
     let iptvTimer, epgTimer;
@@ -1606,6 +1647,7 @@ class SettingsService extends ChangeNotifier {
         tb_api_key: document.getElementById('tbApiKey').value,
         cache_size_mb: parseInt(document.getElementById('cacheSizeMB').value),
         subtitle_fontsize: parseInt(document.getElementById('subtitleFontsize').value),
+        disable_subtitles: document.getElementById('disableSubtitles').checked,
         iptv_m3u_url: document.getElementById('iptvM3uUrl').value,
         epg_url: document.getElementById('epgUrl').value,
         stremio_epg_auto_match: document.getElementById('stremioEpgAutoMatch').checked,
@@ -1644,7 +1686,7 @@ class SettingsService extends ChangeNotifier {
           }
           const keys = [
             'streaming_mode', 'use_debrid', 'debrid_provider', 'rd_api_key', 'tb_api_key',
-            'cache_size_mb', 'subtitle_fontsize', 'iptv_m3u_url', 'epg_url',
+            'cache_size_mb', 'subtitle_fontsize', 'disable_subtitles', 'iptv_m3u_url', 'epg_url',
             'stremio_epg_auto_match', 'stremio_auto_pick_streams', 'auto_play_source', 'auto_play_stremio_addon',
             'next_episode_auto_enabled', 'next_episode_countdown_sec', 'skip_intro_seconds', 'stremio_addons',
             'live_tv_stremio_epg_map', 'iptv_favorite_stream_urls', 'stremio_addons_rich'

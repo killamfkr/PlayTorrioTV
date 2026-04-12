@@ -60,6 +60,9 @@ class PlayerActivity : AppCompatActivity() {
     private var currentSubtitleId: String? = null
     private var currentAspectRatio = 0 // 0=Best fit, 1=Fill, 2=16:9, 3=4:3
 
+    /** From Flutter SharedPreferences — hide subtitle UI and force subtitle track off */
+    private var disableSubtitles = false
+
     // Streaming mode data
     private var isStreaming = false
     private var sourceEntries = mutableListOf<SourceEntry>()
@@ -149,6 +152,8 @@ class PlayerActivity : AppCompatActivity() {
             }
             
             initViews()
+            loadDisableSubtitlesPref()
+            applyDisableSubtitlesUi()
             
             val title = intent.getStringExtra("title") ?: if (videoUri != null) getFilenameFromUri(videoUri) else ""
             titleText.text = title
@@ -178,7 +183,7 @@ class PlayerActivity : AppCompatActivity() {
             PlayerForegroundService.start(this, title)
             
             // Fetch subtitles in background if we have TMDB ID
-            if (tmdbId > 0) {
+            if (tmdbId > 0 && !disableSubtitles) {
                 fetchSubtitles(tmdbId, imdbId, season, episode)
             }
             
@@ -282,6 +287,7 @@ class PlayerActivity : AppCompatActivity() {
                 mediaPlayer.media = media
                 media.release()
                 mediaPlayer.play()
+                enforceDisableSubtitlesTrack()
             }
             
             setupControls()
@@ -425,6 +431,7 @@ class PlayerActivity : AppCompatActivity() {
                             mediaPlayer.time = cwResumePositionMs
                             android.util.Log.d(TAG, "Resumed playback at ${cwResumePositionMs}ms")
                         }
+                        enforceDisableSubtitlesTrack()
                         maybeShowSkipIntroChip()
                     }
                 }
@@ -616,6 +623,7 @@ class PlayerActivity : AppCompatActivity() {
         mediaPlayer.media = media
         media.release()
         mediaPlayer.play()
+        enforceDisableSubtitlesTrack()
 
         currentSourceUrl = source.url
 
@@ -802,6 +810,33 @@ class PlayerActivity : AppCompatActivity() {
     private fun resetOverlayTimer() {
         handler.removeCallbacks(hideOverlayRunnable)
         handler.postDelayed(hideOverlayRunnable, 4000)
+    }
+
+    private fun loadDisableSubtitlesPref() {
+        disableSubtitles = try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            prefs.getBoolean("flutter.disable_subtitles", false)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun applyDisableSubtitlesUi() {
+        val vis = if (disableSubtitles) View.GONE else View.VISIBLE
+        subtitlesButton.visibility = vis
+        subtitleSettingsButton.visibility = vis
+        if (disableSubtitles) {
+            fetchedSubtitles = emptyList()
+            currentSubtitleId = null
+        }
+    }
+
+    /** Keep subtitle track disabled (embedded subs can appear after track discovery). */
+    private fun enforceDisableSubtitlesTrack() {
+        if (!disableSubtitles) return
+        try {
+            mediaPlayer.setSpuTrack(-1)
+        } catch (_: Exception) { }
     }
     
     private fun fetchSubtitles(tmdbId: Int, imdbId: String, season: Int, episode: Int) {
@@ -1015,6 +1050,7 @@ class PlayerActivity : AppCompatActivity() {
     }
     
     private fun showSubtitlePanel() {
+        if (disableSubtitles) return
         if (fetchedSubtitles.isEmpty()) {
             android.widget.Toast.makeText(this, "No subtitles available", android.widget.Toast.LENGTH_SHORT).show()
             return
@@ -1024,6 +1060,7 @@ class PlayerActivity : AppCompatActivity() {
     }
     
     private fun showSettingsPanel() {
+        if (disableSubtitles) return
         settingsPanel.setMediaPlayer(mediaPlayer)
         settingsPanel.show()
     }
@@ -1049,6 +1086,7 @@ class PlayerActivity : AppCompatActivity() {
         mediaPlayer.media = media
         media.release()
         mediaPlayer.play()
+        enforceDisableSubtitlesTrack()
 
         // Seek back to position after a short delay for buffering
         if (currentPos > 0) {
@@ -1134,6 +1172,10 @@ class PlayerActivity : AppCompatActivity() {
                 currentTimeText.text = formatTime(currentTime)
                 totalTimeText.text = "--:--"
             }
+
+            if (disableSubtitles && mediaPlayer.isPlaying) {
+                enforceDisableSubtitlesTrack()
+            }
             
             handler.postDelayed(this, 500)
         }
@@ -1181,9 +1223,9 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun isBottomButton(view: View?): Boolean {
-        return view == playPauseButton || view == subtitlesButton || view == audioTrackButton ||
-               view == aspectRatioButton || view == subtitleSettingsButton ||
-               (view == sourceButton && sourceButton.visibility == View.VISIBLE)
+        if (view == playPauseButton || view == audioTrackButton || view == aspectRatioButton) return true
+        if (!disableSubtitles && (view == subtitlesButton || view == subtitleSettingsButton)) return true
+        return view == sourceButton && sourceButton.visibility == View.VISIBLE
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -1274,7 +1316,11 @@ class PlayerActivity : AppCompatActivity() {
                         true
                     }
                     audioTrackButton.hasFocus() -> {
-                        subtitlesButton.requestFocus()
+                        if (disableSubtitles) {
+                            playPauseButton.requestFocus()
+                        } else {
+                            subtitlesButton.requestFocus()
+                        }
                         true
                     }
                     aspectRatioButton.hasFocus() -> {
@@ -1286,7 +1332,11 @@ class PlayerActivity : AppCompatActivity() {
                         true
                     }
                     sourceButton.hasFocus() -> {
-                        subtitleSettingsButton.requestFocus()
+                        if (disableSubtitles) {
+                            aspectRatioButton.requestFocus()
+                        } else {
+                            subtitleSettingsButton.requestFocus()
+                        }
                         true
                     }
                     else -> false
@@ -1309,7 +1359,11 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     // Bottom buttons: right navigation
                     playPauseButton.hasFocus() -> {
-                        subtitlesButton.requestFocus()
+                        if (disableSubtitles) {
+                            audioTrackButton.requestFocus()
+                        } else {
+                            subtitlesButton.requestFocus()
+                        }
                         true
                     }
                     subtitlesButton.hasFocus() -> {
@@ -1321,7 +1375,13 @@ class PlayerActivity : AppCompatActivity() {
                         true
                     }
                     aspectRatioButton.hasFocus() -> {
-                        subtitleSettingsButton.requestFocus()
+                        if (disableSubtitles) {
+                            if (sourceButton.visibility == View.VISIBLE) {
+                                sourceButton.requestFocus()
+                            }
+                        } else {
+                            subtitleSettingsButton.requestFocus()
+                        }
                         true
                     }
                     subtitleSettingsButton.hasFocus() -> {
