@@ -1,7 +1,90 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:http/http.dart' as http;
 import 'package:xml/xml.dart';
+
+/// Result of parsing a full XMLTV file (single DOM walk in isolate).
+class EpgParseResult {
+  final Map<String, List<EpgProgramme>> programmesByChannel;
+  final List<EpgChannel> channels;
+
+  EpgParseResult({
+    required this.programmesByChannel,
+    required this.channels,
+  });
+}
+
+/// Top-level for [Isolate.run] — must not be an instance method.
+EpgParseResult _parseXmltvInIsolate(String xmlStr) {
+  final doc = XmlDocument.parse(xmlStr);
+  final byChannel = <String, List<EpgProgramme>>{};
+
+  for (final node in doc.findAllElements('programme')) {
+    final ch = node.getAttribute('channel');
+    if (ch == null || ch.isEmpty) continue;
+    final start = _parseXmltvDateStatic(node.getAttribute('start'));
+    final stop = _parseXmltvDateStatic(node.getAttribute('stop'));
+    if (start == null || stop == null) continue;
+
+    var title = 'Programme';
+    final titleEl = node.getElement('title');
+    if (titleEl != null) {
+      final t = titleEl.innerText.trim();
+      if (t.isNotEmpty) title = t;
+    }
+
+    byChannel.putIfAbsent(ch, () => []).add(
+      EpgProgramme(start: start, end: stop, title: title),
+    );
+  }
+
+  for (final list in byChannel.values) {
+    list.sort((a, b) => a.start.compareTo(b.start));
+  }
+
+  final outCh = <EpgChannel>[];
+  for (final node in doc.findAllElements('channel')) {
+    final id = node.getAttribute('id');
+    if (id == null || id.isEmpty) continue;
+    var name = id;
+    for (final dn in node.findAllElements('display-name')) {
+      final t = dn.innerText.trim();
+      if (t.isNotEmpty) {
+        name = t;
+        break;
+      }
+    }
+    outCh.add(EpgChannel(id: id, displayName: name));
+  }
+  outCh.sort(
+    (a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+  );
+
+  return EpgParseResult(programmesByChannel: byChannel, channels: outCh);
+}
+
+DateTime? _parseXmltvDateStatic(String? raw) {
+  if (raw == null) return null;
+  final head = raw.split(_xmltvWs).first;
+  if (head.length < 14) return null;
+  final digits = head.replaceAll(_xmltvNonDigit, '');
+  if (digits.length < 14) return null;
+  try {
+    final y = int.parse(digits.substring(0, 4));
+    final mo = int.parse(digits.substring(4, 6));
+    final d = int.parse(digits.substring(6, 8));
+    final h = int.parse(digits.substring(8, 10));
+    final mi = int.parse(digits.substring(10, 12));
+    final s = int.parse(digits.substring(12, 14));
+    return DateTime(y, mo, d, h, mi, s);
+  } catch (_) {
+    return null;
+  }
+}
+
+final RegExp _xmltvWs = RegExp(r'\s+');
+final RegExp _xmltvNonDigit = RegExp(r'[^0-9]');
 
 /// One channel from an M3U playlist.
 class LiveTvChannel {
@@ -153,79 +236,12 @@ class LiveTvService {
     }
     var xmlStr = utf8.decode(res.bodyBytes, allowMalformed: true);
     if (xmlStr.startsWith('\uFEFF')) xmlStr = xmlStr.substring(1);
-    final map = parseXmltv(xmlStr);
-    _epgByChannel = map;
-    _cachedEpgChannelList = parseXmltvChannels(xmlStr);
+    // Large XMLTV files block the UI if parsed on the main isolate (was parsing twice).
+    final parsed = await Isolate.run(() => _parseXmltvInIsolate(xmlStr));
+    _epgByChannel = parsed.programmesByChannel;
+    _cachedEpgChannelList = parsed.channels;
     _cachedEpgSource = trimmed;
-    return map;
-  }
-
-  static List<EpgChannel> parseXmltvChannels(String xmlStr) {
-    final doc = XmlDocument.parse(xmlStr);
-    final out = <EpgChannel>[];
-    for (final node in doc.findAllElements('channel')) {
-      final id = node.getAttribute('id');
-      if (id == null || id.isEmpty) continue;
-      var name = id;
-      for (final dn in node.findAllElements('display-name')) {
-        final t = dn.innerText.trim();
-        if (t.isNotEmpty) {
-          name = t;
-          break;
-        }
-      }
-      out.add(EpgChannel(id: id, displayName: name));
-    }
-    out.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
-    return out;
-  }
-
-  static Map<String, List<EpgProgramme>> parseXmltv(String xmlStr) {
-    final doc = XmlDocument.parse(xmlStr);
-    final byChannel = <String, List<EpgProgramme>>{};
-
-    for (final node in doc.findAllElements('programme')) {
-      final ch = node.getAttribute('channel');
-      if (ch == null || ch.isEmpty) continue;
-      final start = _parseXmltvDate(node.getAttribute('start'));
-      final stop = _parseXmltvDate(node.getAttribute('stop'));
-      if (start == null || stop == null) continue;
-
-      String title = 'Programme';
-      final titleEl = node.getElement('title');
-      if (titleEl != null) {
-        final t = titleEl.innerText.trim();
-        if (t.isNotEmpty) title = t;
-      }
-
-      byChannel.putIfAbsent(ch, () => []).add(
-            EpgProgramme(start: start, end: stop, title: title),
-          );
-    }
-
-    for (final list in byChannel.values) {
-      list.sort((a, b) => a.start.compareTo(b.start));
-    }
-    return byChannel;
-  }
-
-  static DateTime? _parseXmltvDate(String? raw) {
-    if (raw == null) return null;
-    final head = raw.split(RegExp(r'\s+')).first;
-    if (head.length < 14) return null;
-    final digits = head.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 14) return null;
-    try {
-      final y = int.parse(digits.substring(0, 4));
-      final mo = int.parse(digits.substring(4, 6));
-      final d = int.parse(digits.substring(6, 8));
-      final h = int.parse(digits.substring(8, 10));
-      final mi = int.parse(digits.substring(10, 12));
-      final s = int.parse(digits.substring(12, 14));
-      return DateTime(y, mo, d, h, mi, s);
-    } catch (_) {
-      return null;
-    }
+    return parsed.programmesByChannel;
   }
 
   /// Current programme for [tvgId], if EPG is loaded and a match exists.
