@@ -4,7 +4,13 @@ import '../constants.dart';
 
 class TmdbService {
   static Future<Map<String, dynamic>> _get(String endpoint, {Map<String, String>? params}) async {
-    final queryParams = {'api_key': TmdbApi.apiKey, 'language': 'en-US', ...?params};
+    // TMDB defaults adult titles off for search/lists; include NSFW / all certifications.
+    final queryParams = {
+      'api_key': TmdbApi.apiKey,
+      'language': 'en-US',
+      'include_adult': 'true',
+      ...?params,
+    };
     final uri = Uri.parse('${TmdbApi.baseUrl}$endpoint').replace(queryParameters: queryParams);
     final response = await http.get(uri, headers: {'accept': 'application/json'});
     if (response.statusCode == 200) {
