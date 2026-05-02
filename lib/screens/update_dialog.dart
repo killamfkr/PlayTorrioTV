@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dpad/dpad.dart';
 import '../services/app_updater_service.dart';
-import '../constants.dart';
-
 class UpdateDialog extends StatefulWidget {
   final UpdateInfo info;
   const UpdateDialog({super.key, required this.info});
@@ -73,7 +71,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.white12),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.6), blurRadius: 40),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 40),
             ],
           ),
           child: Column(

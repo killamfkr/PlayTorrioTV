@@ -27,6 +27,19 @@ android {
         versionName = flutter.versionName
     }
 
+    flavorDimensions += "device"
+    productFlavors {
+        create("original") {
+            dimension = "device"
+            // Default startup: full TorrServer + precache (see --dart-define LOW_RAM)
+        }
+        create("lowram") {
+            dimension = "device"
+            versionNameSuffix = "-lowram"
+            // Build with: --dart-define=LOW_RAM=true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

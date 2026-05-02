@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../constants.dart';
 import '../services/settings_service.dart';
+import '../services/playtorrio_cloud_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,17 +16,25 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settings = SettingsService.instance;
+  bool? _supabaseSignedIn;
 
   @override
   void initState() {
     super.initState();
     _settings.startServer();
     _settings.addListener(_onSettingsChanged);
+    _refreshSupabaseSession();
+  }
+
+  Future<void> _refreshSupabaseSession() async {
+    final s = await PlaytorrioCloudSyncService.instance.hasStoredSession();
+    if (mounted) setState(() => _supabaseSignedIn = s);
   }
 
   @override
   void dispose() {
     _settings.removeListener(_onSettingsChanged);
+    unawaited(PlaytorrioCloudSyncService.instance.pushUserSettings());
     super.dispose();
   }
 
@@ -148,6 +159,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 8),
                   _SettingToggle(
+                    title: 'Disable subtitles',
+                    subtitle: 'Hide subtitle controls and turn off all subtitle tracks in the player',
+                    value: _settings.disableSubtitles,
+                    onChanged: (v) => _settings.setDisableSubtitles(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
                     title: 'Use Debrid for Torrents',
                     subtitle: 'Stream torrents via a debrid service',
                     value: _settings.useDebrid,
@@ -172,12 +190,191 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                   const SizedBox(height: 16),
                   const Text(
+                    'Live TV',
+                    style: TextStyle(
+                      color: AppColors.purpleLight,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'IPTV playlist (M3U)',
+                    subtitle: _settings.iptvM3uUrl.isEmpty
+                        ? 'Not set — add URL via phone QR code'
+                        : 'Configured — Live TV → IPTV playlist tab',
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'Stremio live TV',
+                    subtitle: _settings.stremioAddons.isEmpty
+                        ? 'Add TV-capable Stremio addons via phone — Live TV → Stremio tab'
+                        : 'TV catalogs from addons — open Live TV → Stremio tab',
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'EPG (XMLTV)',
+                    subtitle: _settings.epgUrl.isEmpty
+                        ? 'Optional — add XMLTV URL via phone'
+                        : 'Configured',
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Auto-link Stremio to EPG',
+                    subtitle:
+                        'Match Stremio channel names to XMLTV when no manual link is set (needs EPG URL)',
+                    value: _settings.stremioEpgAutoMatch,
+                    onChanged: (v) => _settings.setStremioEpgAutoMatch(v),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'PlayTorrio account',
+                    style: TextStyle(
+                      color: AppColors.purpleLight,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Sync continue watching (Supabase)',
+                    subtitle: 'Same cloud row as the mobile app for the active profile slot (1–4)',
+                    value: _settings.isPlaytorrioCloudProgressSyncEnabled,
+                    onChanged: (v) async {
+                      await _settings.setPlaytorrioCloudProgressSyncEnabled(v);
+                      if (v && await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+                        await PlaytorrioCloudSyncService.instance.pullAndMergeProgress();
+                      }
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Sync settings to cloud',
+                    subtitle: 'Stremio addons, IPTV URLs, debrid keys, and player options (subset)',
+                    value: _settings.isPlaytorrioCloudSettingsSyncEnabled,
+                    onChanged: (v) async {
+                      await _settings.setPlaytorrioCloudSettingsSyncEnabled(v);
+                      if (v && await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+                        await PlaytorrioCloudSyncService.instance.pullUserSettings();
+                      }
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  if (PlaytorrioCloudSyncService.instance.isConfigured) ...[
+                    const SizedBox(height: 8),
+                    _SettingInfo(
+                      title: 'Supabase session',
+                      subtitle: [
+                        if (PlaytorrioCloudSyncService.instance.isAnonKeyJwtFormat)
+                          'Anon key format OK'
+                        else
+                          'Use legacy anon JWT (eyJ…) for cloud writes',
+                        if (_supabaseSignedIn == true) ' — signed in',
+                        if (_supabaseSignedIn == false) ' — not signed in',
+                      ].join(),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'Profile slot for cloud',
+                    subtitle:
+                        'TV Profile 1→slot 1, Profile 2→2, … Profile 5 maps to slot 4 (matches mobile 1–4)',
+                  ),
+                  if (PlaytorrioCloudSyncService.instance.isConfigured) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () async {
+                        await PlaytorrioCloudSyncService.instance.signOut();
+                        await _refreshSupabaseSession();
+                        if (mounted) setState(() {});
+                      },
+                      child: const Text('Sign out of Supabase'),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text(
                     'Stremio Addons',
                     style: TextStyle(
                       color: AppColors.purpleLight,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Auto-play movie & episodes',
+                    subtitle:
+                        'When you pick a movie or episode, play the first link automatically (order below).',
+                    value: _settings.stremioAutoPickStreams,
+                    onChanged: (v) => _settings.setStremioAutoPickStreams(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Auto-play tries first',
+                    subtitle: 'Stremio addons or PlayTorrio index results',
+                    value: _settings.autoPlaySource,
+                    options: const {
+                      'playtorrio_first': 'PlayTorrio, then Stremio',
+                      'stremio_first': 'Stremio, then PlayTorrio',
+                    },
+                    onChanged: (v) => _settings.setAutoPlaySource(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Preferred Stremio addon',
+                    subtitle: 'Which addon’s first stream when Stremio is used (empty = list order)',
+                    value: _settings.autoPlayStremioAddon.isEmpty
+                        ? ''
+                        : _settings.autoPlayStremioAddon,
+                    options: () {
+                      final m = <String, String>{'': 'First in list order'};
+                      for (final n in _settings.stremioAddonAutoPlayChoices) {
+                        m[n] = n;
+                      }
+                      final saved = _settings.autoPlayStremioAddon.trim();
+                      if (saved.isNotEmpty && !m.containsKey(saved)) {
+                        m[saved] = '$saved (saved)';
+                      }
+                      return m;
+                    }(),
+                    onChanged: (v) => _settings.setAutoPlayStremioAddon(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Next episode when one ends',
+                    subtitle:
+                        'After an episode, show Play next with countdown (native player, TMDB shows)',
+                    value: _settings.nextEpisodeAutoEnabled,
+                    onChanged: (v) => _settings.setNextEpisodeAutoEnabled(v),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Next episode countdown',
+                    subtitle: 'Seconds before the next episode starts (0 = button only)',
+                    value: _settings.nextEpisodeCountdownSec.toString(),
+                    options: const {
+                      '0': 'Off (tap Play now)',
+                      '10': '10 seconds',
+                      '15': '15 seconds',
+                      '20': '20 seconds',
+                      '30': '30 seconds',
+                    },
+                    onChanged: (v) => _settings.setNextEpisodeCountdownSec(int.parse(v)),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingDropdown(
+                    title: 'Skip intro',
+                    subtitle: 'Jump this many seconds from the start (0 = hide button)',
+                    value: _settings.skipIntroSeconds.toString(),
+                    options: const {
+                      '0': 'Off',
+                      '60': '1 min',
+                      '90': '1.5 min',
+                      '120': '2 min',
+                      '180': '3 min',
+                    },
+                    onChanged: (v) => _settings.setSkipIntroSeconds(int.parse(v)),
                   ),
                   const SizedBox(height: 8),
                   _SettingInfo(
@@ -264,7 +461,7 @@ class _SettingToggleState extends State<_SettingToggle> {
                 Switch(
                   value: widget.value,
                   onChanged: widget.onChanged,
-                  activeColor: AppColors.purpleLight,
+                  activeThumbColor: AppColors.purpleLight,
                   activeTrackColor: AppColors.darkPurple,
                 ),
               ],

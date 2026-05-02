@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Rounded frame (PlayTorrio TV mark) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3"
+        android:pathData="M22,18 L86,18 A8,8 0 0 1 94,26 L94,82 A8,8 0 0 1 86,90 L22,90 A8,8 0 0 1 14,82 L14,26 A8,8 0 0 1 22,18 Z" />
+    <!-- Play triangle -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M42,36 L42,72 L74,54 Z" />
+</vector>

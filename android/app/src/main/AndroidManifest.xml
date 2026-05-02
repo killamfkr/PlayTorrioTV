@@ -8,15 +8,24 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- Declare that the app is designed for TV (Leanback) -->
+    <!-- TV: use LEANBACK_LAUNCHER below. required=false avoids sideload / store
+         "not compatible with TV" on devices that omit the leanback feature flag. -->
     <uses-feature
         android:name="android.software.leanback"
-        android:required="true" />
+        android:required="false" />
 
-    <!-- Touchscreen is not required for TV -->
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+
+    <!-- Ensure merged deps never imply phone-only hardware -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
 
     <application
         android:label="PlayTorrio TV"

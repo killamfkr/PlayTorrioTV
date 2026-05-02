@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dpad/dpad.dart';
@@ -8,6 +10,7 @@ import 'screens/details_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/player_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/live_tv_screen.dart';
 import 'screens/audiobook_screen.dart';
 import 'screens/music_screen.dart';
 
@@ -20,15 +23,33 @@ import 'services/continue_watching_service.dart';
 import 'services/player_launcher.dart';
 import 'services/local_proxy_service.dart';
 import 'services/profile_service.dart';
+import 'services/app_navigation_bridge.dart';
+import 'services/playtorrio_cloud_sync_service.dart';
+import 'screens/playtorrio_tv_sign_in_screen.dart';
 import 'screens/profile_screen.dart';
+import 'build_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  AppNavigationBridge.init();
   await ProfileService.instance.init();
   await SettingsService.instance.init();
+  await SettingsService.instance
+      .setPlaytorrioProfileSlotForTvProfile(ProfileService.instance.activeProfileId);
+  ContinueWatchingService.onPersisted =
+      () => PlaytorrioCloudSyncService.instance.scheduleProgressPush();
+  if (await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+    await PlaytorrioCloudSyncService.instance.pullOnStartup();
+  }
   await ContinueWatchingService.load();
-  await LocalProxyService().start();
+  if (kLowRamStartup) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(LocalProxyService().start().catchError((_) {}));
+    });
+  } else {
+    await LocalProxyService().start().catchError((_) {});
+  }
 
   runApp(const PlayTorrioApp());
 }
@@ -198,9 +219,18 @@ class PlayTorrioApp extends StatelessWidget {
             bidirectional: true,
             reverseStrategy: RegionNavigationStrategy.memory,
           ),
+          RegionNavigationRule(
+            fromRegion: 'sidebar',
+            toRegion: 'live_channels',
+            direction: TraversalDirection.right,
+            strategy: RegionNavigationStrategy.memory,
+            bidirectional: true,
+            reverseStrategy: RegionNavigationStrategy.memory,
+          ),
         ],
       ),
       child: MaterialApp(
+        navigatorKey: AppNavigationBridge.navigatorKey,
         title: 'PlayTorrio TV',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
@@ -222,6 +252,7 @@ class PlayTorrioApp extends StatelessWidget {
                 id: args['id'] as int,
                 mediaType: args['media_type'] as String,
                 stremioItem: args['stremio_item'] as Map<String, dynamic>?,
+                autoPlayEpisode: args['auto_play_episode'] as Map<String, dynamic>?,
               ),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return FadeTransition(opacity: animation, child: child);
@@ -245,6 +276,7 @@ class PlayTorrioApp extends StatelessWidget {
                 fileIdx: args['fileIdx'] as int?,
                 resumePositionMs: args['resumePositionMs'] as int?,
                 logoUrl: args['logoUrl'] as String?,
+                nextEpisodePayload: args['nextEpisodePayload'] as String?,
               ),
               transitionsBuilder: (context, animation, secondaryAnimation, child) {
                 return FadeTransition(opacity: animation, child: child);
@@ -293,23 +325,27 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
 
   Future<void> _initialize() async {
     try {
-      // Start TorrServer + fetch trackers + load TMDB data in parallel
       setState(() => _status = 'Starting engine...');
-      final tmdbFuture = TmdbService.getTrending();
 
-      await Future.wait([
-        StreamService.warmup(),
-        PlayerLauncher.warmup(),
-        tmdbFuture,
-      ].map((f) => f.catchError((_) {})));
-
-      setState(() => _status = 'Loading posters...');
-
-      // Pre-cache first ~10 poster and backdrop images
-      final trending = await tmdbFuture.catchError((_) => <dynamic>[]);
-      if (mounted) {
-        final futures = <Future>[];
-        for (var i = 0; i < trending.length && i < 10; i++) {
+      if (kLowRamStartup) {
+        await PlayerLauncher.warmup().catchError((_) {});
+        if (!mounted) {
+          return;
+        }
+        List<dynamic> trending = [];
+        try {
+          trending = await TmdbService.getTrendingMovies()
+              .timeout(const Duration(seconds: 15));
+        } catch (_) {
+          trending = [];
+        }
+        // Do not start TorrServer here — overlaps with Home's first TMDB burst on low RAM.
+        if (!mounted) {
+          return;
+        }
+        setState(() => _status = 'Loading posters...');
+        final futures = <Future<void>>[];
+        for (var i = 0; i < trending.length && i < 4; i++) {
           final item = trending[i] as Map<String, dynamic>;
           final poster = item['poster_path'] as String?;
           final backdrop = item['backdrop_path'] as String?;
@@ -326,24 +362,62 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
             ).catchError((_) {}));
           }
         }
-        await Future.wait(futures).timeout(
-          const Duration(seconds: 6),
-          onTimeout: () => [],
-        );
+        if (futures.isNotEmpty) {
+          try {
+            await Future.wait(futures).timeout(const Duration(seconds: 4));
+          } catch (_) {}
+        }
+      } else {
+        final tmdbFuture = TmdbService.getTrendingMovies();
+        await Future.wait([
+          StreamService.warmup(),
+          PlayerLauncher.warmup(),
+          tmdbFuture,
+        ].map((f) => f.catchError((_) {})));
+        if (!mounted) {
+          return;
+        }
+        setState(() => _status = 'Loading posters...');
+        final trending = await tmdbFuture.catchError((_) => <dynamic>[]);
+        if (mounted) {
+          final futures = <Future<void>>[];
+          for (var i = 0; i < trending.length && i < 10; i++) {
+            final item = trending[i] as Map<String, dynamic>;
+            final poster = item['poster_path'] as String?;
+            final backdrop = item['backdrop_path'] as String?;
+            if (poster != null && poster.isNotEmpty) {
+              futures.add(precacheImage(
+                CachedNetworkImageProvider(TmdbApi.posterUrl(poster)),
+                context,
+              ).catchError((_) {}));
+            }
+            if (backdrop != null && backdrop.isNotEmpty) {
+              futures.add(precacheImage(
+                CachedNetworkImageProvider(TmdbApi.backdropUrl(backdrop)),
+                context,
+              ).catchError((_) {}));
+            }
+          }
+          await Future.wait(futures).timeout(
+            const Duration(seconds: 6),
+            onTimeout: () => [],
+          );
+        }
       }
     } catch (_) {}
 
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const ProfileScreen(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 600),
-        ),
-      );
+    if (!mounted) {
+      return;
     }
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, _, _) => const PlaytorrioTvSignInScreen(),
+        transitionsBuilder: (_, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 600),
+      ),
+    );
   }
 
   @override
@@ -364,16 +438,12 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
             // Logo
             FadeTransition(
               opacity: _fade,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white, width: 2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Center(
-                  child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 42),
-                ),
+              child: Image.asset(
+                AppAssets.playtorrioMark,
+                width: 88,
+                height: 88,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
               ),
             ),
             const SizedBox(height: 24),
@@ -455,8 +525,15 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
     _navSlide = CurvedAnimation(parent: _enterCtrl, curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic));
     _contentFade = CurvedAnimation(parent: _enterCtrl, curve: const Interval(0.2, 1.0, curve: Curves.easeOut));
     _enterCtrl.forward();
-    // Check for updates after UI is settled
-    Future.delayed(const Duration(seconds: 2), () {
+    if (kLowRamStartup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(seconds: 3), () {
+          unawaited(StreamService.warmup().catchError((_) {}));
+        });
+      });
+    }
+    // Low-RAM: delay update check so Home TMDB + images aren't concurrent with GitHub fetch.
+    Future.delayed(Duration(seconds: kLowRamStartup ? 12 : 2), () {
       if (mounted) UpdateDialog.checkAndShow(context);
     });
   }
@@ -478,6 +555,7 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
     _NavItem(icon: Icons.home_rounded, label: 'Home'),
     _NavItem(icon: Icons.search_rounded, label: 'Search'),
     _NavItem(icon: Icons.extension_rounded, label: 'Catalogs'),
+    _NavItem(icon: Icons.live_tv_rounded, label: 'Live TV'),
     _NavItem(icon: Icons.headphones_rounded, label: 'Audiobooks'),
     _NavItem(icon: Icons.music_note_rounded, label: 'Music'),
     _NavItem(icon: Icons.settings_rounded, label: 'Settings'),
@@ -492,10 +570,12 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
       case 2:
         return const StremioCatalogScreen();
       case 3:
-        return const AudiobookScreen();
+        return const LiveTvScreen();
       case 4:
-        return const MusicScreen();
+        return const AudiobookScreen();
       case 5:
+        return const MusicScreen();
+      case 6:
         return const SettingsScreen();
       default:
         return const HomeScreen(category: 'home');
@@ -520,8 +600,8 @@ class MainShellState extends State<MainShell> with SingleTickerProviderStateMixi
                 // Save current profile data before navigating away
                 Navigator.of(context).pushReplacement(
                   PageRouteBuilder(
-                    pageBuilder: (_, __, ___) => const ProfileScreen(),
-                    transitionsBuilder: (_, animation, __, child) =>
+                    pageBuilder: (_, _, _) => const ProfileScreen(),
+                    transitionsBuilder: (_, animation, _, child) =>
                         FadeTransition(opacity: animation, child: child),
                     transitionDuration: const Duration(milliseconds: 300),
                   ),
@@ -584,16 +664,12 @@ class _SideNav extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: expanded ? 16 : 8, vertical: 12),
             child: expanded
                 ? const Text('PlayTorrio', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5))
-                : Container(
+                : Image.asset(
+                    AppAssets.playtorrioMark,
                     width: 32,
                     height: 32,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                    ),
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
                   ),
           ),
           const SizedBox(height: 24),

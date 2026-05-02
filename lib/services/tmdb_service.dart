@@ -4,7 +4,13 @@ import '../constants.dart';
 
 class TmdbService {
   static Future<Map<String, dynamic>> _get(String endpoint, {Map<String, String>? params}) async {
-    final queryParams = {'api_key': TmdbApi.apiKey, 'language': 'en-US', ...?params};
+    // TMDB defaults adult titles off for search/lists; include NSFW / all certifications.
+    final queryParams = {
+      'api_key': TmdbApi.apiKey,
+      'language': 'en-US',
+      'include_adult': 'true',
+      ...?params,
+    };
     final uri = Uri.parse('${TmdbApi.baseUrl}$endpoint').replace(queryParameters: queryParams);
     final response = await http.get(uri, headers: {'accept': 'application/json'});
     if (response.statusCode == 200) {
@@ -15,6 +21,18 @@ class TmdbService {
 
   static Future<List<dynamic>> getTrending({String timeWindow = 'day'}) async {
     final data = await _get('/trending/all/$timeWindow');
+    return data['results'] as List<dynamic>;
+  }
+
+  /// Same feed as PlayTorrioV2 mobile home (`/trending/movie/{window}`).
+  static Future<List<dynamic>> getTrendingMovies({String timeWindow = 'day'}) async {
+    final data = await _get('/trending/movie/$timeWindow');
+    return data['results'] as List<dynamic>;
+  }
+
+  /// TV trending (default **day**, same window as mobile `getTrendingTv`).
+  static Future<List<dynamic>> getTrendingTv({String timeWindow = 'day'}) async {
+    final data = await _get('/trending/tv/$timeWindow');
     return data['results'] as List<dynamic>;
   }
 

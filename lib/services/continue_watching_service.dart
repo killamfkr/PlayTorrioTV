@@ -1,6 +1,6 @@
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
-import 'stream_service.dart';
 
 class WatchEntry {
   final int tmdbId;
@@ -33,9 +33,14 @@ class WatchEntry {
     required this.updatedAt,
   });
 
-  /// Unique key: one entry per show/movie, per episode for TV
+  /// Same `uniqueId` shape as PlayTorrioV2 mobile (`WatchHistoryService`).
+  String get uniqueId => season != null && episode != null
+      ? '${tmdbId}_S${season}_E$episode'
+      : '$tmdbId';
+
+  /// One entry per show/movie, per episode for TV (lowercase — local key).
   String get key => season != null && episode != null
-      ? '${tmdbId}_s${season}e${episode}'
+      ? '${tmdbId}_s${season}e$episode'
       : '$tmdbId';
 
   double get progress =>
@@ -57,6 +62,25 @@ class WatchEntry {
         'updatedAt': updatedAt,
       };
 
+  /// Row shape expected by Supabase `user_watch_history.entries` (mobile parity).
+  Map<String, dynamic> toCloudRow() => {
+        'uniqueId': uniqueId,
+        'tmdbId': tmdbId,
+        'imdbId': imdbId.isEmpty ? null : imdbId,
+        'title': title,
+        'posterPath': posterPath ?? '',
+        'method': magnet == '__streaming__' ? 'stream' : 'torrent',
+        'sourceId': magnet,
+        'position': positionMs,
+        'duration': durationMs,
+        'season': season,
+        'episode': episode,
+        'magnetLink': magnet != '__streaming__' ? magnet : null,
+        'fileIndex': fileIdx,
+        'mediaType': mediaType,
+        'updatedAt': updatedAt,
+      };
+
   factory WatchEntry.fromJson(Map<String, dynamic> json) => WatchEntry(
         tmdbId: json['tmdbId'] as int,
         imdbId: (json['imdbId'] ?? '') as String,
@@ -72,6 +96,62 @@ class WatchEntry {
         mediaType: (json['mediaType'] ?? 'movie') as String,
         updatedAt: (json['updatedAt'] ?? 0) as int,
       );
+
+  /// Parse mobile / Supabase cloud row into TV [WatchEntry].
+  factory WatchEntry.fromCloudMap(Map<String, dynamic> m) {
+    int tid = (m['tmdbId'] is int) ? m['tmdbId'] as int : int.tryParse('${m['tmdbId']}') ?? 0;
+    final uid = m['uniqueId']?.toString() ?? '';
+    int? s;
+    int? ep;
+    if (tid <= 0 && uid.isNotEmpty) {
+      final re = RegExp(r'^(\d+)_S(\d+)_E(\d+)$');
+      final mm = re.firstMatch(uid);
+      if (mm != null) {
+        tid = int.parse(mm.group(1)!);
+        s = int.parse(mm.group(2)!);
+        ep = int.parse(mm.group(3)!);
+      } else {
+        tid = int.tryParse(uid) ?? 0;
+      }
+    } else {
+      s = m['season'] as int? ?? (m['season'] is num ? (m['season'] as num).toInt() : null);
+      ep = m['episode'] as int? ?? (m['episode'] is num ? (m['episode'] as num).toInt() : null);
+    }
+    final pos = (m['positionMs'] is int)
+        ? m['positionMs'] as int
+        : int.tryParse('${m['position'] ?? m['positionMs'] ?? 0}') ?? 0;
+    final dur = (m['durationMs'] is int)
+        ? m['durationMs'] as int
+        : int.tryParse('${m['duration'] ?? m['durationMs'] ?? 0}') ?? 0;
+    final mag = (m['magnet'] ?? m['magnetLink'] ?? m['sourceId'] ?? '') as String? ?? '';
+    final method = m['method']?.toString() ?? '';
+    final magnetOut =
+        mag.isNotEmpty ? mag : (method == 'stream' ? '__streaming__' : '');
+    final fi = (m['fileIdx'] is int)
+        ? m['fileIdx'] as int
+        : int.tryParse('${m['fileIndex'] ?? m['fileIdx'] ?? 0}') ?? 0;
+    final mt = (m['mediaType'] ?? 'movie').toString();
+    final upd = (m['updatedAt'] is int)
+        ? m['updatedAt'] as int
+        : int.tryParse('${m['updatedAt'] ?? 0}') ?? 0;
+    final imdb = m['imdbId'];
+    final imdbStr = imdb == null ? '' : imdb.toString();
+    return WatchEntry(
+      tmdbId: tid,
+      imdbId: imdbStr,
+      title: (m['title'] ?? '') as String? ?? 'Unknown',
+      magnet: magnetOut,
+      fileIdx: fi,
+      positionMs: pos,
+      durationMs: dur,
+      season: s,
+      episode: ep,
+      backdropPath: m['backdropPath'] as String?,
+      posterPath: m['posterPath'] as String?,
+      mediaType: mt == 'tv' ? 'tv' : 'movie',
+      updatedAt: upd,
+    );
+  }
 
   WatchEntry copyWith({int? positionMs, int? durationMs, int? updatedAt}) =>
       WatchEntry(
@@ -95,6 +175,9 @@ class ContinueWatchingService {
   static const _key = 'continue_watching';
   static List<WatchEntry> _entries = [];
 
+  /// Set from `main()` to push Supabase after local CW changes (avoids import cycle).
+  static void Function()? onPersisted;
+
   static List<WatchEntry> get entries => List.unmodifiable(_entries);
 
   static Future<void> load() async {
@@ -107,7 +190,6 @@ class ContinueWatchingService {
         _entries = list
             .map((e) => WatchEntry.fromJson(e as Map<String, dynamic>))
             .toList();
-        // Sort by most recently updated first
         _entries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       } catch (_) {
         _entries = [];
@@ -119,16 +201,13 @@ class ContinueWatchingService {
     final prefs = await SharedPreferences.getInstance();
     final json = jsonEncode(_entries.map((e) => e.toJson()).toList());
     await prefs.setString(_key, json);
-    // Also write for native Kotlin to read
     await prefs.setString('${_key}_json', json);
   }
 
   static Future<void> upsert(WatchEntry entry) async {
-    // Don't save if near the beginning (< 30s) or near the end (> 93%)
     if (entry.durationMs > 0) {
       if (entry.positionMs < 30000) return;
       if (entry.progress > 0.93) {
-        // Finished watching — remove entry
         await remove(entry.key);
         return;
       }
@@ -140,26 +219,41 @@ class ContinueWatchingService {
     } else {
       _entries.insert(0, entry);
     }
-    // Keep max 30 entries
     if (_entries.length > 30) _entries = _entries.sublist(0, 30);
     _entries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     await _save();
+    onPersisted?.call();
   }
 
   static Future<void> remove(String key) async {
     _entries.removeWhere((e) => e.key == key);
     await _save();
+    onPersisted?.call();
   }
 
-  /// Persist current entries to a profile-specific key for later restoration.
+  /// Replace list after Supabase merge (same semantics as mobile `replaceAll`).
+  static Future<void> replaceFromCloudMaps(List<Map<String, dynamic>> rows) async {
+    final parsed = <WatchEntry>[];
+    for (final m in rows) {
+      try {
+        parsed.add(WatchEntry.fromCloudMap(m));
+      } catch (_) {}
+    }
+    parsed.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (parsed.length > 30) {
+      _entries = parsed.sublist(0, 30);
+    } else {
+      _entries = parsed;
+    }
+    await _save();
+  }
+
   static Future<void> saveForProfile(String profileId) async {
     final prefs = await SharedPreferences.getInstance();
     final json = jsonEncode(_entries.map((e) => e.toJson()).toList());
     await prefs.setString('profile_cw_$profileId', json);
   }
 
-  /// Restore entries from a profile-specific key and write them into the
-  /// standard key so that native code and the home screen see the right data.
   static Future<void> loadForProfile(String profileId) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('profile_cw_$profileId');
@@ -176,7 +270,6 @@ class ContinueWatchingService {
     } else {
       _entries = [];
     }
-    // Sync to standard keys for native Kotlin
     await _save();
   }
 }

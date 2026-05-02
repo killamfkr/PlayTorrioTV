@@ -20,6 +20,7 @@ class PlayerScreen extends StatefulWidget {
   final int? fileIdx;
   final int? resumePositionMs;
   final String? logoUrl;
+  final String? nextEpisodePayload;
 
   const PlayerScreen({
     super.key,
@@ -34,6 +35,7 @@ class PlayerScreen extends StatefulWidget {
     this.fileIdx,
     this.resumePositionMs,
     this.logoUrl,
+    this.nextEpisodePayload,
   });
 
   @override
@@ -191,6 +193,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         mediaType: widget.mediaType,
         resumePositionMs: widget.resumePositionMs,
         logoUrl: widget.logoUrl,
+        nextEpisodePayload: widget.nextEpisodePayload,
       );
       setState(() => _launched = true);
     } on PlatformException catch (e) {
@@ -298,7 +301,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   imageUrl: widget.logoUrl!,
                   fit: BoxFit.contain,
                   memCacheWidth: 500,
-                  errorWidget: (_, __, ___) => Text(
+                  errorWidget: (_, _, _) => Text(
                     widget.title,
                     style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
                     textAlign: TextAlign.center,

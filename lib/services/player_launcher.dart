@@ -31,6 +31,7 @@ class PlayerLauncher {
     String? mediaType,
     int? resumePositionMs,
     String? logoUrl,
+    String? nextEpisodePayload,
   }) async {
     final result = await _channel.invokeMethod<bool>('launchPlayer', {
       'url': url,
@@ -46,6 +47,7 @@ class PlayerLauncher {
       'mediaType': mediaType ?? 'movie',
       'resumePositionMs': resumePositionMs ?? -1,
       'logoUrl': logoUrl ?? '',
+      'nextEpisodePayload': nextEpisodePayload ?? '',
     });
     return result ?? false;
   }
@@ -62,6 +64,7 @@ class PlayerLauncher {
     String? mediaType,
     int? resumePositionMs,
     String? logoUrl,
+    String? nextEpisodePayload,
   }) async {
     final result = await _channel.invokeMethod<bool>('launchStreamingPlayer', {
       'tmdbId': tmdbId,
@@ -74,6 +77,7 @@ class PlayerLauncher {
       'mediaType': mediaType ?? 'movie',
       'resumePositionMs': resumePositionMs ?? 0,
       'logoUrl': logoUrl ?? '',
+      'nextEpisodePayload': nextEpisodePayload ?? '',
     });
     return result ?? false;
   }

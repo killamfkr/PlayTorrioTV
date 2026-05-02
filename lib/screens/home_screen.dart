@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:dpad/dpad.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../build_config.dart';
 import '../constants.dart';
 import '../services/tmdb_service.dart';
 import '../services/continue_watching_service.dart';
@@ -59,53 +59,90 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Low-RAM: run TMDB calls in small batches to avoid OOM when many JSON + images load at once.
+  Future<List<T>> _batched<T>(List<Future<T> Function()> jobs, {required int batchSize}) async {
+    final out = <T>[];
+    for (var i = 0; i < jobs.length; i += batchSize) {
+      final end = (i + batchSize > jobs.length) ? jobs.length : i + batchSize;
+      final chunk = jobs.sublist(i, end).map((f) => f()).toList();
+      out.addAll(await Future.wait(chunk));
+    }
+    return out;
+  }
+
   Future<void> _loadContent() async {
     setState(() => _isLoading = true);
     try {
       List<_ContentRow> rows = [];
+      final low = kLowRamStartup;
       switch (widget.category) {
         case 'home':
-          final results = await Future.wait([
-            TmdbService.getTrending(),
-            TmdbService.getPopularMovies(),
-            TmdbService.getPopularTv(),
-            TmdbService.getTopRatedMovies(),
-            TmdbService.getTopRatedTv(),
-            TmdbService.getNowPlayingMovies(),
-          ]);
+          // Match PlayTorrioV2 branch `cursor/stremio-live-matches-to-channels-995e` home:
+          // Popular movies/series → (Stremio catalogs inserted here) → Trending movies/day,
+          // Trending TV/day → Top rated (movies only) → New releases.
+          final results = low
+              ? await _batched<dynamic>([
+                  () => TmdbService.getPopularMovies(),
+                  () => TmdbService.getPopularTv(),
+                  () => TmdbService.getTrendingMovies(),
+                  () => TmdbService.getTrendingTv(),
+                  () => TmdbService.getTopRatedMovies(),
+                  () => TmdbService.getNowPlayingMovies(),
+                ], batchSize: 2)
+              : await Future.wait([
+                  TmdbService.getPopularMovies(),
+                  TmdbService.getPopularTv(),
+                  TmdbService.getTrendingMovies(),
+                  TmdbService.getTrendingTv(),
+                  TmdbService.getTopRatedMovies(),
+                  TmdbService.getNowPlayingMovies(),
+                ]);
           rows = [
-            _ContentRow('Trending Now', results[0], useBackdrop: true),
-            _ContentRow('Popular Movies', results[1]),
-            _ContentRow('Popular Series', results[2]),
-            _ContentRow('Top Rated Movies', results[3]),
-            _ContentRow('Top Rated Series', results[4]),
-            _ContentRow('Now Playing', results[5], useBackdrop: true),
+            _ContentRow('Popular Movies', results[0]),
+            _ContentRow('Popular Series', results[1]),
+            _ContentRow('Trending Movies', results[2], useBackdrop: true),
+            _ContentRow('Trending Series', results[3]),
+            _ContentRow('Top Rated', results[4]),
+            _ContentRow('New Releases', results[5], useBackdrop: true),
           ];
           break;
         case 'movies':
-          final results = await Future.wait([
-            TmdbService.getPopularMovies(),
-            TmdbService.getTopRatedMovies(),
-            TmdbService.getNowPlayingMovies(),
-            TmdbService.getTrending(timeWindow: 'week'),
-          ]);
+          final results = low
+              ? await _batched<dynamic>([
+                  () => TmdbService.getPopularMovies(),
+                  () => TmdbService.getTopRatedMovies(),
+                  () => TmdbService.getNowPlayingMovies(),
+                  () => TmdbService.getTrendingMovies(timeWindow: 'week'),
+                ], batchSize: 2)
+              : await Future.wait([
+                  TmdbService.getPopularMovies(),
+                  TmdbService.getTopRatedMovies(),
+                  TmdbService.getNowPlayingMovies(),
+                  TmdbService.getTrendingMovies(timeWindow: 'week'),
+                ]);
           rows = [
             _ContentRow('Popular Movies', results[0], useBackdrop: true),
             _ContentRow('Top Rated', results[1]),
             _ContentRow('Now Playing', results[2]),
-            _ContentRow('Trending This Week', results[3].where((e) => e['media_type'] == 'movie').toList()),
+            _ContentRow('Trending This Week', results[3]),
           ];
           break;
         case 'tv':
-          final results = await Future.wait([
-            TmdbService.getPopularTv(),
-            TmdbService.getTopRatedTv(),
-            TmdbService.getTrending(timeWindow: 'week'),
-          ]);
+          final results = low
+              ? await _batched<dynamic>([
+                  () => TmdbService.getPopularTv(),
+                  () => TmdbService.getTopRatedTv(),
+                  () => TmdbService.getTrendingTv(timeWindow: 'week'),
+                ], batchSize: 2)
+              : await Future.wait([
+                  TmdbService.getPopularTv(),
+                  TmdbService.getTopRatedTv(),
+                  TmdbService.getTrendingTv(timeWindow: 'week'),
+                ]);
           rows = [
             _ContentRow('Popular Series', results[0], useBackdrop: true),
             _ContentRow('Top Rated', results[1]),
-            _ContentRow('Trending This Week', results[2].where((e) => e['media_type'] == 'tv').toList()),
+            _ContentRow('Trending This Week', results[2]),
           ];
           break;
       }
@@ -582,7 +619,7 @@ class _HeroInfo extends StatelessWidget {
                       imageUrl: TmdbApi.logoUrl(logoPath),
                       fit: BoxFit.contain,
                       alignment: Alignment.centerLeft,
-                      errorWidget: (_, __, ___) => Text(
+                      errorWidget: (_, _, _) => Text(
                         title,
                         style: const TextStyle(
                           color: Colors.white,
@@ -738,7 +775,7 @@ class _ContentSliderState extends State<_ContentSlider> with SingleTickerProvide
               itemCount: widget.items.length,
               itemBuilder: (_, index) {
                 final item = widget.items[index] as Map<String, dynamic>;
-                final onFocused = () {
+                void onFocused() {
                   widget.onItemFocused(item);
                   _scrollToIndex(index);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -751,7 +788,7 @@ class _ContentSliderState extends State<_ContentSlider> with SingleTickerProvide
                       );
                     }
                   });
-                };
+                }
                 if (widget.useBackdrop) {
                   return _BackdropCard(
                     item: item,
@@ -866,8 +903,8 @@ class _BackdropCardState extends State<_BackdropCard> with SingleTickerProviderS
                                   imageUrl: isFullUrl ? backdrop : TmdbApi.backdropUrl(backdrop, size: 'w780'),
                                   fit: BoxFit.cover,
                                   memCacheWidth: 500,
-                                  placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                  errorWidget: (_, __, ___) => Container(
+                                  placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.movie, color: AppColors.textDim),
                                   ),
@@ -963,7 +1000,6 @@ class _PosterCardState extends State<_PosterCard> with SingleTickerProviderState
   @override
   Widget build(BuildContext context) {
     final posterPath = widget.item['poster_path'] as String?;
-    final title = (widget.item['title'] ?? widget.item['name'] ?? '') as String;
     final isFullUrl = posterPath != null && posterPath.startsWith('http');
 
     return Padding(
@@ -1007,8 +1043,8 @@ class _PosterCardState extends State<_PosterCard> with SingleTickerProviderState
                               imageUrl: isFullUrl ? posterPath : TmdbApi.posterUrl(posterPath),
                               fit: BoxFit.cover,
                               memCacheWidth: 260,
-                              placeholder: (_, __) => Container(color: AppColors.cardBg),
-                              errorWidget: (_, __, ___) => Container(
+                              placeholder: (_, _) => Container(color: AppColors.cardBg),
+                              errorWidget: (_, _, _) => Container(
                                 color: AppColors.cardBg,
                                 child: const Icon(Icons.movie, color: AppColors.textDim),
                               ),
@@ -1316,9 +1352,9 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard>
                                   imageUrl: TmdbApi.backdropUrl(backdrop, size: 'w780'),
                                   fit: BoxFit.cover,
                                   memCacheWidth: 500,
-                                  placeholder: (_, __) =>
+                                  placeholder: (_, _) =>
                                       Container(color: AppColors.cardBg),
-                                  errorWidget: (_, __, ___) => Container(
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.movie,
                                         color: AppColors.textDim),

@@ -3,7 +3,6 @@ import 'package:dpad/dpad.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../constants.dart';
 import '../services/stremio_addon_service.dart';
-import '../services/settings_service.dart';
 import '../services/tmdb_service.dart';
 
 /// TV-optimized Stremio catalog browser with D-pad navigation.
@@ -608,8 +607,8 @@ class _CatalogCardState extends State<_CatalogCard> {
                                   imageUrl: poster,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 360,
-                                  placeholder: (_, __) => Container(color: AppColors.cardBg),
-                                  errorWidget: (_, __, ___) => Container(
+                                  placeholder: (_, _) => Container(color: AppColors.cardBg),
+                                  errorWidget: (_, _, _) => Container(
                                     color: AppColors.cardBg,
                                     child: const Icon(Icons.movie, color: AppColors.textDim),
                                   ),

@@ -315,14 +315,14 @@ class StremioAddonService {
     }
   }
 
-  /// Fetch streams from ALL configured addons in parallel for a movie.
+  /// Fetch streams from ALL configured addons (sequential = stable order for UI / auto-pick).
   static Future<Map<String, List<StremioStream>>> fetchAllMovieStreams(
     String imdbId,
   ) async {
     return _fetchAllStreams(imdbId: imdbId, mediaType: 'movie');
   }
 
-  /// Fetch streams from ALL configured addons in parallel for a TV episode.
+  /// Fetch streams from ALL configured addons (sequential = stable order for UI / auto-pick).
   static Future<Map<String, List<StremioStream>>> fetchAllEpisodeStreams(
     String imdbId,
     int season,
@@ -336,6 +336,58 @@ class StremioAddonService {
     );
   }
 
+  /// First Stremio row: [preferredAddonName] manifest name if it has streams, else first addon in map order.
+  static StremioStream? firstStreamForAutoPick(
+    Map<String, List<StremioStream>> byAddon, {
+    String? preferredAddonName,
+  }) {
+    final pref = preferredAddonName?.trim();
+    if (pref != null && pref.isNotEmpty) {
+      final list = byAddon[pref];
+      if (list != null && list.isNotEmpty) {
+        return list.first;
+      }
+    }
+    for (final list in byAddon.values) {
+      if (list.isNotEmpty) {
+        return list.first;
+      }
+    }
+    return null;
+  }
+
+  /// Parse a raw Stremio stream map (e.g. from [getStreams]) into [StremioStream].
+  static StremioStream streamFromRawMap(Map<String, dynamic> map, {String addonName = ''}) {
+    final hints = map['behaviorHints'] as Map<String, dynamic>? ?? {};
+    final sourcesRaw = map['sources'] as List? ?? [];
+    return StremioStream(
+      addonName: addonName,
+      name: (map['name'] ?? '') as String,
+      title: (map['title'] ?? map['description'] ?? '') as String,
+      infoHash: map['infoHash'] as String?,
+      fileIdx: map['fileIdx'] as int?,
+      url: map['url'] as String?,
+      externalUrl: map['externalUrl'] as String?,
+      filename: hints['filename'] as String?,
+      sources: sourcesRaw.cast<String>(),
+    );
+  }
+
+  /// Top stream from a single-addon [getStreams] response (JSON array order).
+  static StremioStream? firstStreamFromRaw(Iterable<Map<String, dynamic>> raw, {String addonName = ''}) {
+    for (final m in raw) {
+      return streamFromRawMap(m, addonName: addonName);
+    }
+    return null;
+  }
+
+  static Map<String, dynamic>? firstRawStreamMap(Iterable<Map<String, dynamic>> raw) {
+    for (final m in raw) {
+      return m;
+    }
+    return null;
+  }
+
   static Future<Map<String, List<StremioStream>>> _fetchAllStreams({
     required String imdbId,
     required String mediaType,
@@ -346,20 +398,14 @@ class StremioAddonService {
     if (addons.isEmpty || imdbId.isEmpty) return {};
 
     final results = <String, List<StremioStream>>{};
-    final futures = <Future<MapEntry<String, List<StremioStream>>?>>[];
-
     for (final baseUrl in addons) {
-      futures.add(_fetchFromAddon(
+      final entry = await _fetchFromAddon(
         baseUrl: baseUrl,
         imdbId: imdbId,
         mediaType: mediaType,
         season: season,
         episode: episode,
-      ));
-    }
-
-    final entries = await Future.wait(futures);
-    for (final entry in entries) {
+      );
       if (entry != null && entry.value.isNotEmpty) {
         results[entry.key] = entry.value;
       }

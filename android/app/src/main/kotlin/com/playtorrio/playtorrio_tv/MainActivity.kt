@@ -10,13 +10,22 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val PLAYER_CHANNEL = "com.playtorrio/player"
+    private val APP_NAV_CHANNEL = "com.playtorrio/app_nav"
     private val TORRSERVER_CHANNEL = "com.playtorrio/torrserver"
     private val UPDATER_CHANNEL = "com.playtorrio/updater"
 
     private var torrServerManager: TorrServerManager? = null
+    private var appNavChannel: MethodChannel? = null
+    private var pendingNextEpisodeJson: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        appNavChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_NAV_CHANNEL)
+        pendingNextEpisodeJson?.let { json ->
+            pendingNextEpisodeJson = null
+            appNavChannel?.invokeMethod("playNextEpisode", json, null)
+        }
 
         // Player channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PLAYER_CHANNEL)
@@ -40,6 +49,7 @@ class MainActivity : FlutterActivity() {
                         val mediaType = call.argument<String>("mediaType") ?: "movie"
                         val resumePositionMs = (call.argument<Number>("resumePositionMs") ?: 0).toLong()
                         val logoUrl = call.argument<String>("logoUrl") ?: ""
+                        val nextEpisodePayload = call.argument<String>("nextEpisodePayload") ?: ""
                         if (url == null) {
                             result.error("NO_URL", "URL is required", null)
                             return@setMethodCallHandler
@@ -59,6 +69,7 @@ class MainActivity : FlutterActivity() {
                                 putExtra("mediaType", mediaType)
                                 putExtra("resumePositionMs", resumePositionMs)
                                 putExtra("logoUrl", logoUrl)
+                                putExtra("nextEpisodePayload", nextEpisodePayload)
                             }
                             startActivity(intent)
                             result.success(true)
@@ -77,6 +88,7 @@ class MainActivity : FlutterActivity() {
                         val mediaType = call.argument<String>("mediaType") ?: "movie"
                         val resumePositionMs = (call.argument<Number>("resumePositionMs") ?: 0).toLong()
                         val logoUrl = call.argument<String>("logoUrl") ?: ""
+                        val nextEpisodePayload = call.argument<String>("nextEpisodePayload") ?: ""
                         try {
                             val intent = Intent(this, PlayerActivity::class.java).apply {
                                 putExtra("isStreaming", true)
@@ -90,6 +102,7 @@ class MainActivity : FlutterActivity() {
                                 putExtra("mediaType", mediaType)
                                 putExtra("resumePositionMs", resumePositionMs)
                                 putExtra("logoUrl", logoUrl)
+                                putExtra("nextEpisodePayload", nextEpisodePayload)
                             }
                             startActivity(intent)
                             result.success(true)
@@ -173,6 +186,17 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val json = intent.getStringExtra("playNextEpisodeJson") ?: return
+        if (appNavChannel != null) {
+            appNavChannel?.invokeMethod("playNextEpisode", json, null)
+        } else {
+            pendingNextEpisodeJson = json
+        }
     }
 
     override fun onDestroy() {

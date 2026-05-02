@@ -39,7 +39,9 @@ class _CachedAudio {
   Uint8List getBytes() {
     if (_final != null) return _final!;
     final b = BytesBuilder(copy: false);
-    for (final c in _chunks) b.add(c);
+    for (final c in _chunks) {
+      b.add(c);
+    }
     final result = b.toBytes();
     if (complete) _final = result;
     return result;
@@ -83,7 +85,9 @@ class LocalProxyService {
   /// Cancel any in-flight segment downloads (e.g. when leaving the player).
   void cancelCurrentStream() {
     _cancelled = true;
-    for (final c in _cache.values) c.dispose();
+    for (final c in _cache.values) {
+      c.dispose();
+    }
     _cache.clear();
     _httpClient.close();
     _httpClient = http.Client();
@@ -184,8 +188,8 @@ class LocalProxyService {
       'Referer': 'https://tokybook.com/',
       'Origin': 'https://tokybook.com',
       'Accept': '*/*',
-      if (audiobookId != null) 'x-audiobook-id': audiobookId,
-      if (token != null) 'x-stream-token': token,
+      'x-audiobook-id': ?audiobookId,
+      'x-stream-token': ?token,
       'x-track-src': forTrackSrc,
     };
 
@@ -396,10 +400,15 @@ class LocalProxyService {
     int pos = 0;
 
     // Find first sync byte
-    while (pos < len && ts[pos] != 0x47) pos++;
+    while (pos < len && ts[pos] != 0x47) {
+      pos++;
+    }
 
     while (pos + 188 <= len) {
-      if (ts[pos] != 0x47) { pos++; continue; }
+      if (ts[pos] != 0x47) {
+        pos++;
+        continue;
+      }
 
       final b1 = ts[pos + 1];
       final b2 = ts[pos + 2];
