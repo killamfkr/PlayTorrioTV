@@ -24,6 +24,18 @@ class TmdbService {
     return data['results'] as List<dynamic>;
   }
 
+  /// Same feed as PlayTorrioV2 mobile home (`/trending/movie/{window}`).
+  static Future<List<dynamic>> getTrendingMovies({String timeWindow = 'day'}) async {
+    final data = await _get('/trending/movie/$timeWindow');
+    return data['results'] as List<dynamic>;
+  }
+
+  /// TV trending for parity with mobile-style browsing (not used on V2 home, but useful for TV tab).
+  static Future<List<dynamic>> getTrendingTv({String timeWindow = 'day'}) async {
+    final data = await _get('/trending/tv/$timeWindow');
+    return data['results'] as List<dynamic>;
+  }
+
   static Future<List<dynamic>> getPopularMovies({int page = 1}) async {
     final data = await _get('/movie/popular', params: {'page': '$page'});
     return data['results'] as List<dynamic>;

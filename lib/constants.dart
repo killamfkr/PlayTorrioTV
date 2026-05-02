@@ -22,7 +22,8 @@ class AppColors {
 }
 
 class TmdbApi {
-  static const String apiKey = 'b3556f3b206e16f82df4d1f6fd4545e6';
+  /// Same key as PlayTorrioV2 (`lib/api/tmdb_api.dart`) so list ordering matches mobile.
+  static const String apiKey = 'c3515fdc674ea2bd7b514f4bc3616a4a';
   static const String baseUrl = 'https://api.themoviedb.org/3';
   static const String imageBase = 'https://image.tmdb.org/t/p';
 

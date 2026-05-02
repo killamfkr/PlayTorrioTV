@@ -325,7 +325,7 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
         }
         List<dynamic> trending = [];
         try {
-          trending = await TmdbService.getTrending()
+          trending = await TmdbService.getTrendingMovies()
               .timeout(const Duration(seconds: 15));
         } catch (_) {
           trending = [];
@@ -359,7 +359,7 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
           } catch (_) {}
         }
       } else {
-        final tmdbFuture = TmdbService.getTrending();
+        final tmdbFuture = TmdbService.getTrendingMovies();
         await Future.wait([
           StreamService.warmup(),
           PlayerLauncher.warmup(),

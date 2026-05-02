@@ -77,9 +77,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final low = kLowRamStartup;
       switch (widget.category) {
         case 'home':
+          // Match PlayTorrioV2 mobile home: movie trending (not trending/all), same row order & labels.
           final results = low
               ? await _batched<dynamic>([
-                  () => TmdbService.getTrending(),
+                  () => TmdbService.getTrendingMovies(),
                   () => TmdbService.getPopularMovies(),
                   () => TmdbService.getPopularTv(),
                   () => TmdbService.getTopRatedMovies(),
@@ -87,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   () => TmdbService.getNowPlayingMovies(),
                 ], batchSize: 2)
               : await Future.wait([
-                  TmdbService.getTrending(),
+                  TmdbService.getTrendingMovies(),
                   TmdbService.getPopularMovies(),
                   TmdbService.getPopularTv(),
                   TmdbService.getTopRatedMovies(),
@@ -100,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _ContentRow('Popular Series', results[2]),
             _ContentRow('Top Rated Movies', results[3]),
             _ContentRow('Top Rated Series', results[4]),
-            _ContentRow('Now Playing', results[5], useBackdrop: true),
+            _ContentRow('New Releases', results[5], useBackdrop: true),
           ];
           break;
         case 'movies':
@@ -109,19 +110,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   () => TmdbService.getPopularMovies(),
                   () => TmdbService.getTopRatedMovies(),
                   () => TmdbService.getNowPlayingMovies(),
-                  () => TmdbService.getTrending(timeWindow: 'week'),
+                  () => TmdbService.getTrendingMovies(timeWindow: 'week'),
                 ], batchSize: 2)
               : await Future.wait([
                   TmdbService.getPopularMovies(),
                   TmdbService.getTopRatedMovies(),
                   TmdbService.getNowPlayingMovies(),
-                  TmdbService.getTrending(timeWindow: 'week'),
+                  TmdbService.getTrendingMovies(timeWindow: 'week'),
                 ]);
           rows = [
             _ContentRow('Popular Movies', results[0], useBackdrop: true),
             _ContentRow('Top Rated', results[1]),
             _ContentRow('Now Playing', results[2]),
-            _ContentRow('Trending This Week', results[3].where((e) => e['media_type'] == 'movie').toList()),
+            _ContentRow('Trending This Week', results[3]),
           ];
           break;
         case 'tv':
@@ -129,17 +130,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ? await _batched<dynamic>([
                   () => TmdbService.getPopularTv(),
                   () => TmdbService.getTopRatedTv(),
-                  () => TmdbService.getTrending(timeWindow: 'week'),
+                  () => TmdbService.getTrendingTv(timeWindow: 'week'),
                 ], batchSize: 2)
               : await Future.wait([
                   TmdbService.getPopularTv(),
                   TmdbService.getTopRatedTv(),
-                  TmdbService.getTrending(timeWindow: 'week'),
+                  TmdbService.getTrendingTv(timeWindow: 'week'),
                 ]);
           rows = [
             _ContentRow('Popular Series', results[0], useBackdrop: true),
             _ContentRow('Top Rated', results[1]),
-            _ContentRow('Trending This Week', results[2].where((e) => e['media_type'] == 'tv').toList()),
+            _ContentRow('Trending This Week', results[2]),
           ];
           break;
       }
