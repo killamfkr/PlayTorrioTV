@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:dpad/dpad.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../constants.dart';
 import '../services/settings_service.dart';
+import '../services/playtorrio_cloud_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,17 +16,25 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settings = SettingsService.instance;
+  bool? _supabaseSignedIn;
 
   @override
   void initState() {
     super.initState();
     _settings.startServer();
     _settings.addListener(_onSettingsChanged);
+    _refreshSupabaseSession();
+  }
+
+  Future<void> _refreshSupabaseSession() async {
+    final s = await PlaytorrioCloudSyncService.instance.hasStoredSession();
+    if (mounted) setState(() => _supabaseSignedIn = s);
   }
 
   @override
   void dispose() {
     _settings.removeListener(_onSettingsChanged);
+    unawaited(PlaytorrioCloudSyncService.instance.pushUserSettings());
     super.dispose();
   }
 
@@ -215,6 +226,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: _settings.stremioEpgAutoMatch,
                     onChanged: (v) => _settings.setStremioEpgAutoMatch(v),
                   ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'PlayTorrio account',
+                    style: TextStyle(
+                      color: AppColors.purpleLight,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Sync continue watching (Supabase)',
+                    subtitle: 'Same cloud row as the mobile app for the active profile slot (1–4)',
+                    value: _settings.isPlaytorrioCloudProgressSyncEnabled,
+                    onChanged: (v) async {
+                      await _settings.setPlaytorrioCloudProgressSyncEnabled(v);
+                      if (v && await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+                        await PlaytorrioCloudSyncService.instance.pullAndMergeProgress();
+                      }
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _SettingToggle(
+                    title: 'Sync settings to cloud',
+                    subtitle: 'Stremio addons, IPTV URLs, debrid keys, and player options (subset)',
+                    value: _settings.isPlaytorrioCloudSettingsSyncEnabled,
+                    onChanged: (v) async {
+                      await _settings.setPlaytorrioCloudSettingsSyncEnabled(v);
+                      if (v && await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+                        await PlaytorrioCloudSyncService.instance.pullUserSettings();
+                      }
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  if (PlaytorrioCloudSyncService.instance.isConfigured) ...[
+                    const SizedBox(height: 8),
+                    _SettingInfo(
+                      title: 'Supabase session',
+                      subtitle: [
+                        if (PlaytorrioCloudSyncService.instance.isAnonKeyJwtFormat)
+                          'Anon key format OK'
+                        else
+                          'Use legacy anon JWT (eyJ…) for cloud writes',
+                        if (_supabaseSignedIn == true) ' — signed in',
+                        if (_supabaseSignedIn == false) ' — not signed in',
+                      ].join(),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  _SettingInfo(
+                    title: 'Profile slot for cloud',
+                    subtitle:
+                        'TV Profile 1→slot 1, Profile 2→2, … Profile 5 maps to slot 4 (matches mobile 1–4)',
+                  ),
+                  if (PlaytorrioCloudSyncService.instance.isConfigured) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () async {
+                        await PlaytorrioCloudSyncService.instance.signOut();
+                        await _refreshSupabaseSession();
+                        if (mounted) setState(() {});
+                      },
+                      child: const Text('Sign out of Supabase'),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   const Text(
                     'Stremio Addons',

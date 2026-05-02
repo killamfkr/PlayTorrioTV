@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_service.dart';
 import 'continue_watching_service.dart';
+import 'playtorrio_cloud_sync_service.dart';
 import 'music_player_service.dart';
 import 'audiobook_player_service.dart';
 
@@ -101,6 +102,12 @@ class ProfileService {
     await ContinueWatchingService.loadForProfile(id);
     await MusicPlayerService.loadForProfile(id);
     await AudiobookPlayerService.loadForProfile(id);
+
+    await SettingsService.instance.setPlaytorrioProfileSlotForTvProfile(id);
+    if (await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+      await PlaytorrioCloudSyncService.instance.pullOnStartup();
+      await PlaytorrioCloudSyncService.instance.pushFullProfileBackup();
+    }
   }
 
   Future<Profile?> addProfile() async {

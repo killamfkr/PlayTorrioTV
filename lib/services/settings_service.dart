@@ -806,6 +806,112 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PlayTorrio cloud (Supabase) — same prefs keys as PlayTorrioV2 mobile branch
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static const String _ptCloudProgressSyncKey = 'pt_cloud_sync_progress';
+  static const String _ptCloudSettingsSyncKey = 'pt_cloud_sync_settings';
+  static const String _ptProfileIdKey = 'pt_active_profile_id';
+
+  /// Supabase `profile_id` 1..4 (mobile parity). Prefer `pt_active_profile_id`; else derive from TV profile id.
+  int get playtorrioCloudProfileSlot {
+    final stored = _prefs.getInt(_ptProfileIdKey);
+    if (stored != null && stored >= 1 && stored <= 4) {
+      return stored;
+    }
+    switch (_prefs.getString('active_profile') ?? 'default') {
+      case 'default':
+        return 1;
+      case 'p2':
+        return 2;
+      case 'p3':
+        return 3;
+      case 'p4':
+        return 4;
+      default:
+        return 4;
+    }
+  }
+
+  Future<void> setPlaytorrioProfileSlotForTvProfile(String tvProfileId) async {
+    final slot = switch (tvProfileId) {
+      'default' => 1,
+      'p2' => 2,
+      'p3' => 3,
+      'p4' => 4,
+      _ => 4,
+    };
+    await _prefs.setInt(_ptProfileIdKey, slot);
+  }
+
+  bool get isPlaytorrioCloudProgressSyncEnabled =>
+      _prefs.getBool(_ptCloudProgressSyncKey) ?? true;
+
+  Future<void> setPlaytorrioCloudProgressSyncEnabled(bool v) async {
+    await _prefs.setBool(_ptCloudProgressSyncKey, v);
+    notifyListeners();
+  }
+
+  bool get isPlaytorrioCloudSettingsSyncEnabled =>
+      _prefs.getBool(_ptCloudSettingsSyncKey) ?? true;
+
+  Future<void> setPlaytorrioCloudSettingsSyncEnabled(bool v) async {
+    await _prefs.setBool(_ptCloudSettingsSyncKey, v);
+    notifyListeners();
+  }
+
+  /// Keys mirrored to `user_settings.prefs` (subset of TV settings).
+  static const Set<String> cloudSyncPreferenceKeySet = {
+    'streaming_mode',
+    'use_debrid',
+    'debrid_provider',
+    'rd_api_key',
+    'tb_api_key',
+    'cache_size_mb',
+    'subtitle_fontsize',
+    'disable_subtitles',
+    'stremio_addons',
+    'stremio_addons_rich',
+    'iptv_m3u_url',
+    'epg_url',
+    'stremio_epg_auto_match',
+    'stremio_auto_pick_streams',
+    'auto_play_source',
+    'auto_play_stremio_addon',
+    'next_episode_auto_enabled',
+    'next_episode_countdown_sec',
+    'skip_intro_seconds',
+    'live_tv_stremio_epg_map',
+    'iptv_favorite_stream_urls',
+  };
+
+  Future<Map<String, dynamic>> exportForCloudSync() async {
+    final m = <String, dynamic>{};
+    for (final k in cloudSyncPreferenceKeySet) {
+      if (!_prefs.containsKey(k)) continue;
+      final v = _prefs.get(k);
+      if (v is bool || v is int || v is double || v is String) {
+        m[k] = v;
+      } else if (v is List<String>) {
+        m[k] = v;
+      }
+    }
+    return m;
+  }
+
+  /// Merge remote prefs from Supabase (newer wins per key when both are primitives).
+  Future<void> applyCloudPreferenceMap(Map<String, dynamic> map) async {
+    final patch = <String, dynamic>{};
+    for (final e in map.entries) {
+      if (!cloudSyncPreferenceKeySet.contains(e.key)) continue;
+      patch[e.key] = e.value;
+    }
+    if (patch.isNotEmpty) {
+      _applyJson(patch);
+    }
+  }
+
   void _broadcastSettings() {
     final msg = jsonEncode({'type': 'settings', 'data': _toJson()});
     for (final ws in List.of(_wsClients)) {

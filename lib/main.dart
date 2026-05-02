@@ -24,6 +24,8 @@ import 'services/player_launcher.dart';
 import 'services/local_proxy_service.dart';
 import 'services/profile_service.dart';
 import 'services/app_navigation_bridge.dart';
+import 'services/playtorrio_cloud_sync_service.dart';
+import 'screens/playtorrio_tv_sign_in_screen.dart';
 import 'screens/profile_screen.dart';
 import 'build_config.dart';
 
@@ -33,6 +35,13 @@ void main() async {
   AppNavigationBridge.init();
   await ProfileService.instance.init();
   await SettingsService.instance.init();
+  await SettingsService.instance
+      .setPlaytorrioProfileSlotForTvProfile(ProfileService.instance.activeProfileId);
+  ContinueWatchingService.onPersisted =
+      () => PlaytorrioCloudSyncService.instance.scheduleProgressPush();
+  if (await PlaytorrioCloudSyncService.instance.hasStoredSession()) {
+    await PlaytorrioCloudSyncService.instance.pullOnStartup();
+  }
   await ContinueWatchingService.load();
   if (kLowRamStartup) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -402,7 +411,7 @@ class _SplashScreenState extends State<_SplashScreen> with TickerProviderStateMi
     }
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, _, _) => const ProfileScreen(),
+        pageBuilder: (_, _, _) => const PlaytorrioTvSignInScreen(),
         transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(opacity: animation, child: child);
         },

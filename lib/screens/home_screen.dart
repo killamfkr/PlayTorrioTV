@@ -77,30 +77,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final low = kLowRamStartup;
       switch (widget.category) {
         case 'home':
-          // Match PlayTorrioV2 mobile home: movie trending (not trending/all), same row order & labels.
+          // Match PlayTorrioV2 branch `cursor/stremio-live-matches-to-channels-995e` home:
+          // Popular movies/series → (Stremio catalogs inserted here) → Trending movies/day,
+          // Trending TV/day → Top rated (movies only) → New releases.
           final results = low
               ? await _batched<dynamic>([
-                  () => TmdbService.getTrendingMovies(),
                   () => TmdbService.getPopularMovies(),
                   () => TmdbService.getPopularTv(),
+                  () => TmdbService.getTrendingMovies(),
+                  () => TmdbService.getTrendingTv(),
                   () => TmdbService.getTopRatedMovies(),
-                  () => TmdbService.getTopRatedTv(),
                   () => TmdbService.getNowPlayingMovies(),
                 ], batchSize: 2)
               : await Future.wait([
-                  TmdbService.getTrendingMovies(),
                   TmdbService.getPopularMovies(),
                   TmdbService.getPopularTv(),
+                  TmdbService.getTrendingMovies(),
+                  TmdbService.getTrendingTv(),
                   TmdbService.getTopRatedMovies(),
-                  TmdbService.getTopRatedTv(),
                   TmdbService.getNowPlayingMovies(),
                 ]);
           rows = [
-            _ContentRow('Trending Now', results[0], useBackdrop: true),
-            _ContentRow('Popular Movies', results[1]),
-            _ContentRow('Popular Series', results[2]),
-            _ContentRow('Top Rated Movies', results[3]),
-            _ContentRow('Top Rated Series', results[4]),
+            _ContentRow('Popular Movies', results[0]),
+            _ContentRow('Popular Series', results[1]),
+            _ContentRow('Trending Movies', results[2], useBackdrop: true),
+            _ContentRow('Trending Series', results[3]),
+            _ContentRow('Top Rated', results[4]),
             _ContentRow('New Releases', results[5], useBackdrop: true),
           ];
           break;

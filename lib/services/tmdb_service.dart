@@ -30,7 +30,7 @@ class TmdbService {
     return data['results'] as List<dynamic>;
   }
 
-  /// TV trending for parity with mobile-style browsing (not used on V2 home, but useful for TV tab).
+  /// TV trending (default **day**, same window as mobile `getTrendingTv`).
   static Future<List<dynamic>> getTrendingTv({String timeWindow = 'day'}) async {
     final data = await _get('/trending/tv/$timeWindow');
     return data['results'] as List<dynamic>;
